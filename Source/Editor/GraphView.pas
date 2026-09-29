@@ -1,6 +1,6 @@
 ﻿unit GraphView;
 
-// 背景キャンバスLibを継承し、グラフ専用の枠・文字のドラッグ編集だけを担当する。
+// 背景キャンバス上でグラフと文字の選択・ドラッグを扱い、追従表示を合成する。
 interface
 uses System.Classes, System.Types, System.SysUtils, Vcl.Controls, Vcl.Graphics,
   SyncCanvasView, GraphModel, GraphPainter;
@@ -29,11 +29,9 @@ type
     FDragStart:TPointF;
     FInitialTextStyle:TTextStyle;
     function ScenePoint(X,Y:Integer):TPointF;
-    function HitHandle(const Bounds:TRectF; X,Y:Integer):Integer;
     function LabelIndex(ID:Integer):Integer;
     function SelectedBounds:TRectF;
     function SelectedLabelRole:TTextRole;
-    procedure DrawSelection(const Bounds:TRectF);
     procedure DrawDecorations(const Bounds:TRectF);
     function DecorationPoint(Kind:Integer; const Bounds:TRectF):TPoint;
     function HitDecoration(X,Y:Integer):Integer;
@@ -61,7 +59,8 @@ type
     property OnSelectionChanged:TNotifyEvent read FOnSelectionChanged write FOnSelectionChanged;
   end;
 implementation
-uses System.Math, Winapi.Windows, GraphCanvasFrame;
+uses System.Math, Winapi.Windows, GraphCanvasFrame, GraphViewBitmapCache,
+  GraphViewBounds;
 const LabelMoveBase=1000; LabelResizeBase=100000; DecorationBase=1000000;
 
 constructor TGraphView.Create(AOwner:TComponent);
@@ -81,39 +80,6 @@ begin
   inherited;
 end;
 
-procedure FillLayer(Bitmap:Vcl.Graphics.TBitmap; out Crop:TRect; const Graph:TBytes;
-  Width,Height:Integer);
-var X,Y,L,T,R,B,A:Integer; Src,Dest:PByte;
-begin
-  Bitmap.SetSize(0,0);
-  if Length(Graph)<>Int64(Width)*Height*4 then Exit;
-  L:=Width; T:=Height; R:=-1; B:=-1;
-  for Y:=0 to Height-1 do
-    for X:=0 to Width-1 do
-      if Graph[(NativeInt(Y)*Width+X)*4+3]<>0 then
-      begin
-        L:=Min(L,X); T:=Min(T,Y); R:=Max(R,X); B:=Max(B,Y);
-      end;
-  if R<L then Exit;
-  Crop:=Rect(L,T,R+1,B+1);
-  Bitmap.PixelFormat:=pf32bit;
-  Bitmap.SetSize(Crop.Width,Crop.Height);
-  for Y:=0 to Crop.Height-1 do
-  begin
-    Src:=@Graph[(NativeInt(Y+T)*Width+L)*4];
-    Dest:=Bitmap.ScanLine[Y];
-    for X:=0 to Crop.Width-1 do
-    begin
-      A:=Src[3];
-      Dest[0]:=(Integer(Src[2])*A+127) div 255;
-      Dest[1]:=(Integer(Src[1])*A+127) div 255;
-      Dest[2]:=(Integer(Src[0])*A+127) div 255;
-      Dest[3]:=A;
-      Inc(Src,4); Inc(Dest,4);
-    end;
-  end;
-end;
-
 procedure TGraphView.CachePreview(const Background,Graph:TBytes; Width,Height:Integer);
 begin
   FPreviewActive:=False;
@@ -122,7 +88,7 @@ begin
   FTextBitmap.SetSize(0,0);
   if FDoc=nil then Exit;
   FGraphOrigin:=FDoc.Bounds;
-  FillLayer(FGraphBitmap,FGraphCrop,Graph,Width,Height);
+  CacheRgbaLayer(FGraphBitmap,FGraphCrop,Graph,Width,Height);
 end;
 
 procedure TGraphView.CacheLabelPreview(const Background,Base,TextLayer:TBytes;
@@ -133,7 +99,7 @@ begin
   I:=LabelIndex(FActiveLabelID);
   if I<0 then Exit;
   FTextOrigin:=FLabels[I].Bounds;
-  FillLayer(FTextBitmap,FTextCrop,TextLayer,Width,Height);
+  CacheRgbaLayer(FTextBitmap,FTextCrop,TextLayer,Width,Height);
 end;
 
 procedure TGraphView.Bind(Doc:TGraphDocument; const Labels:TArray<TGraphLabel>);
@@ -155,23 +121,6 @@ begin DrawCanvasFrame(Canvas,R); end;
 
 procedure TGraphView.Paint;
 var B:TRectF; I:Integer;
-  procedure DrawLayer(Bitmap:Vcl.Graphics.TBitmap; const Crop:TRect;
-    const Origin,Current:TRectF);
-  var SX,SY:Double; Target:TRect; Blend:TBlendFunction;
-  begin
-    if Bitmap.Empty or (Origin.Width<=0) or (Origin.Height<=0) then Exit;
-    SX:=Current.Width/Origin.Width; SY:=Current.Height/Origin.Height;
-    Target:=Rect(
-      Round(PanX+(Current.Left+(Crop.Left-Origin.Left)*SX)*Zoom),
-      Round(PanY+(Current.Top+(Crop.Top-Origin.Top)*SY)*Zoom),
-      Round(PanX+(Current.Left+(Crop.Right-Origin.Left)*SX)*Zoom),
-      Round(PanY+(Current.Top+(Crop.Bottom-Origin.Top)*SY)*Zoom));
-    Blend.BlendOp:=AC_SRC_OVER; Blend.BlendFlags:=0;
-    Blend.SourceConstantAlpha:=255; Blend.AlphaFormat:=AC_SRC_ALPHA;
-    if (Target.Width>0) and (Target.Height>0) then
-      AlphaBlend(Canvas.Handle,Target.Left,Target.Top,Target.Width,Target.Height,
-        Bitmap.Canvas.Handle,0,0,Bitmap.Width,Bitmap.Height,Blend);
-  end;
 begin
   inherited;
   if (FDoc=nil) or (FDoc.Kind=gkNone) then Exit;
@@ -179,34 +128,13 @@ begin
   begin
     B:=FDoc.Bounds;
     if FActiveLabelID>=0 then B:=FGraphOrigin;
-    DrawLayer(FGraphBitmap,FGraphCrop,FGraphOrigin,B);
+    DrawRgbaLayer(Canvas,FGraphBitmap,FGraphCrop,FGraphOrigin,B,PanX,PanY,Zoom);
     I:=LabelIndex(FActiveLabelID);
-    if I>=0 then DrawLayer(FTextBitmap,FTextCrop,FTextOrigin,FLabels[I].Bounds);
+    if I>=0 then DrawRgbaLayer(Canvas,FTextBitmap,FTextCrop,FTextOrigin,
+      FLabels[I].Bounds,PanX,PanY,Zoom);
   end;
-  DrawSelection(SelectedBounds);
+  DrawBoundsHandles(Canvas,SelectedBounds,PanX,PanY,Zoom);
   if LabelIndex(FSelectedLabelID)>=0 then DrawDecorations(SelectedBounds);
-end;
-
-procedure TGraphView.DrawSelection(const Bounds:TRectF);
-var R:TRect; I,HX,HY:Integer;
-begin
-  R:=Rect(Round(PanX+Bounds.Left*Zoom),Round(PanY+Bounds.Top*Zoom),
-    Round(PanX+Bounds.Right*Zoom),Round(PanY+Bounds.Bottom*Zoom));
-  Canvas.Brush.Style:=bsClear; Canvas.Pen.Color:=$00E9B456; Canvas.Pen.Style:=psDot;
-  Canvas.Rectangle(R); Canvas.Pen.Style:=psSolid;
-  Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=$00E9B456;
-  for I:=0 to 7 do
-  begin
-    case I of
-      0,3,5:HX:=R.Left;
-      1,6:HX:=(R.Left+R.Right) div 2;
-    else HX:=R.Right; end;
-    case I of
-      0,1,2:HY:=R.Top;
-      3,4:HY:=(R.Top+R.Bottom) div 2;
-    else HY:=R.Bottom; end;
-    Canvas.Rectangle(HX-5,HY-5,HX+6,HY+6);
-  end;
 end;
 
 function TGraphView.DecorationPoint(Kind:Integer; const Bounds:TRectF):TPoint;
@@ -287,25 +215,6 @@ begin
   if I>=0 then Result:=FLabels[I].Role else Result:=trTitle;
 end;
 
-function TGraphView.HitHandle(const Bounds:TRectF; X,Y:Integer):Integer;
-var B:TRectF; L,T,R,D,CX,CY:Integer;
-begin
-  Result:=-3;
-  if (FDoc=nil) or (FDoc.Kind=gkNone) then Exit;
-  B:=Bounds;
-  L:=Round(PanX+B.Left*Zoom); T:=Round(PanY+B.Top*Zoom);
-  R:=Round(PanX+B.Right*Zoom); D:=Round(PanY+B.Bottom*Zoom);
-  CX:=(L+R) div 2; CY:=(T+D) div 2;
-  if (Abs(X-L)<=7) and (Abs(Y-T)<=7) then Result:=0
-  else if (Abs(X-CX)<=7) and (Abs(Y-T)<=7) then Result:=1
-  else if (Abs(X-R)<=7) and (Abs(Y-T)<=7) then Result:=2
-  else if (Abs(X-L)<=7) and (Abs(Y-CY)<=7) then Result:=3
-  else if (Abs(X-R)<=7) and (Abs(Y-CY)<=7) then Result:=4
-  else if (Abs(X-L)<=7) and (Abs(Y-D)<=7) then Result:=5
-  else if (Abs(X-CX)<=7) and (Abs(Y-D)<=7) then Result:=6
-  else if (Abs(X-R)<=7) and (Abs(Y-D)<=7) then Result:=7;
-end;
-
 procedure TGraphView.UpdateCursor(X,Y:Integer);
 var H,I:Integer; P:TPointF;
 begin
@@ -317,14 +226,14 @@ begin
   end;
   H:=-3;
   I:=LabelIndex(FSelectedLabelID);
-  if I>=0 then H:=HitHandle(FLabels[I].Bounds,X,Y);
+  if I>=0 then H:=HitBoundsHandle(FLabels[I].Bounds,X,Y,PanX,PanY,Zoom);
   P:=ScenePoint(X,Y);
   if H=-3 then
   begin
     for I:=High(FLabels) downto 0 do
       if FLabels[I].Bounds.Contains(P) then
       begin Cursor:=crSizeAll; Exit; end;
-    H:=HitHandle(FDoc.Bounds,X,Y);
+    H:=HitBoundsHandle(FDoc.Bounds,X,Y,PanX,PanY,Zoom);
   end;
   case H of
     0,7:Cursor:=crSizeNWSE;
@@ -374,7 +283,7 @@ begin
     I:=LabelIndex(FSelectedLabelID);
     if (FTarget=-3) and (I>=0) then
     begin
-      H:=HitHandle(FLabels[I].Bounds,X,Y);
+      H:=HitBoundsHandle(FLabels[I].Bounds,X,Y,PanX,PanY,Zoom);
       if H>=0 then FTarget:=LabelResizeBase+FSelectedLabelID*8+H;
     end;
     if FTarget=-3 then
@@ -384,7 +293,7 @@ begin
     if FTarget=-3 then
     begin
       FSelectedLabelID:=-1;
-      FTarget:=HitHandle(FDoc.Bounds,X,Y);
+      FTarget:=HitBoundsHandle(FDoc.Bounds,X,Y,PanX,PanY,Zoom);
       if (FTarget=-3) and FDoc.Bounds.Contains(P) then FTarget:=-1;
     end;
     if (PreviousSelection<>FSelectedLabelID) and Assigned(FOnSelectionChanged) then
@@ -399,14 +308,6 @@ end;
 procedure TGraphView.MouseMove(Shift:TShiftState; X,Y:Integer);
 var P,D:TPointF; I,H:Integer; OldB,NewB:TRectF; Factor,WX,HY:Single;
     S:TTextStyle; Role:TTextRole;
-  procedure ResizeBounds(var B:TRectF; Handle:Integer; const Delta:TPointF;
-    Minimum:Single);
-  begin
-    if Handle in [0,3,5] then B.Left:=Min(B.Right-Minimum,B.Left+Delta.X);
-    if Handle in [2,4,7] then B.Right:=Max(B.Left+Minimum,B.Right+Delta.X);
-    if Handle in [0,1,2] then B.Top:=Min(B.Bottom-Minimum,B.Top+Delta.Y);
-    if Handle in [5,6,7] then B.Bottom:=Max(B.Top+Minimum,B.Bottom+Delta.Y);
-  end;
 begin
   if (FTarget=-3) or not MouseCapture then
   begin
@@ -446,7 +347,7 @@ begin
     Exit;
   end;
   if FTarget=-1 then FDoc.Bounds.Offset(D.X,D.Y)
-  else if FTarget in [0..7] then ResizeBounds(FDoc.Bounds,FTarget,D,40)
+  else if FTarget in [0..7] then ResizeBoundsHandle(FDoc.Bounds,FTarget,D,40)
   else
   begin
     if FTarget>=LabelResizeBase then
@@ -466,7 +367,7 @@ begin
         if H>=0 then
         begin
           OldB:=FLabels[H].Bounds; NewB:=OldB;
-          ResizeBounds(NewB,(FTarget-LabelResizeBase) mod 8,D,10);
+          ResizeBoundsHandle(NewB,(FTarget-LabelResizeBase) mod 8,D,10);
           WX:=NewB.Width/OldB.Width; HY:=NewB.Height/OldB.Height;
           if Abs(WX-1)>=Abs(HY-1) then Factor:=WX else Factor:=HY;
           Factor:=EnsureRange(Factor,0.1/FDoc.LabelScales[I],20/FDoc.LabelScales[I]);

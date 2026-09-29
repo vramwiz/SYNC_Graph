@@ -1,16 +1,18 @@
 # カラーピッカーと色コード解析
 
 - ID: color-picker
-- 版: 1.0.0 / 登録日: 2026-09-28
+- 基礎4ユニット: 1.0.0 / 共通パネル: 1.1.1（2026-09-29に参考元からコピー・同期）
 - 分類: UI部品（ショートカット管理はUI操作支援）
 - 出典: D:\DelphiProg\test\MapRaku\Lib\ColorPicker
 - 動作条件: Delphi 37 / Win64 / VCL・RTL・Windows標準ユニット。外部DLL・別登録ライブラリへの依存なし。
 
 ## コピー対象と導入
 
-ColorPickerHueBar.pas、ColorPickerSVArea.pas、ColorPickerColorMath.pas、ColorCode.pas
+ColorPickerPanel.pas、ColorPickerHueBar.pas、ColorPickerSVArea.pas、ColorPickerColorMath.pas、ColorCode.pas
 
-上記ファイルだけを利用側へコピーし、ユニット検索パスへ追加する。利用側から保管庫を参照しない。テストは本体と同じ階層に配置しているが、利用側へのテストのコピーは任意。
+基礎4ユニットは従来のコピーを維持し、共通パネルだけ参考元の1.1.0から追加した。ユニット検索パスは本プロジェクト内のディレクトリを参照する。
+
+共通パネルは子Editのハンドル生成に備え、Ownerがウィンドウの場合は生成の初めにParentを確定する。また親画面の初期配置後に`RefreshLayout`で寸法を再計算する。この2点は参考元へ反映済みで、パネル本体は同一内容。基礎4ユニットも変更していない。パネルの`SelectedColor`を装飾対象と同期し、OnChangeでモデルへ反映する。アルファ値はモデル側に保持する。
 
 色相バーは`TColorPickerHueBar`、彩度・明度領域は`TColorPickerSVArea`。いずれもParentとBoundsを設定する。
 色相のOnChangeでは現在色をColorToHsvで分解し、彩度・明度を保持したまま新しい色相でHsvToColorを呼び、SV領域のBaseColorとColorを更新する。実装例はテストフォームを参照。
@@ -20,19 +22,10 @@ SVのOnChangeでColorを読み、適用は利用側で行う。プロパティ�
 テストは色相・SV・色プレビュー・色コード入力を接続している。色相とSVをドラッグし、赤・緑・青・白・黒、不正コード、RGBの範囲外、HEX入力を確認する。アルファ選択、色履歴、文書への反映は含まない。
 色コード解析はMapRakuのSource/ObjectProperties/Color/MapRakuColorCode.pasからコピーし、ユニット名だけColorCodeへ変更。他の3ユニットはロジック変更なし。
 
-## 最小テストとビルド
+## 検証
 
-[ColorPickerTest.dproj](ColorPickerTest.dproj) を開く。[ColorPickerTestForm.pas](ColorPickerTestForm.pas) が最小使用例。DFMなしのコード生成フォーム。
-
-RAD Studioの環境を読み込み、このフォルダーで実行する。
-
-```bat
-msbuild ColorPickerTest.dproj /t:Build /p:Config=Debug /p:Platform=Win64 /v:minimal
-msbuild ColorPickerTest.dproj /t:Build /p:Config=Release /p:Platform=Win64 /v:minimal
-```
-
-出力は Win64/<構成>/ColorPickerTest.exe。再利用コードとテストプロジェクト・フォーム・RES・READMEを同階層に置く。
+参考元の`D:\DelphiProg\test\DelphiVclAppTemplate\Source\Lib\UI\ColorPicker`には単体テストがある。本プロジェクトへはコピーしていない。本プロジェクトでは`Tests/EditorSmoke.dpr`で配置、HEX・RGB十進入力、選択中の線色への反映を確認する。
 
 ## 確認状況
 
-Win64 Debug/Releaseビルド成功、警告0・エラー0。実行・実UI操作・DPIは未確認で、利用者が確認する。元プロジェクトは変更していない。コピーした本体は色コードのユニット名以外のロジックを変更していない。
+参考元の単体サンプルはWin64 Debug/Releaseビルド成功。こちらの編集フォームのビルドとスモークテストも通過。実AviUtl2でのUI操作と複数DPIはユーザー確認待ち。参考元は変更していない。

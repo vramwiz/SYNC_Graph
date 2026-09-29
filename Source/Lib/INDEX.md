@@ -7,10 +7,10 @@
 | [AviUtl2Canvas](AviUtl2Canvas/README.md) | 背景取得、ABI、項目登録、パン・ズーム | 表示の透明部分を黒へ変更。灰色作業面と外側描画フックを追加。Fitの余白を拡張 |
 | [DarkComboBox](UI/DarkComboBox/README.md) | グラフ種類、装飾対象、フォント選択 | 1.0.1: DrawTextの文字色を修正。参考元へ反映済み |
 | [ToolbarIcon](UI/ToolbarIcon/README.md) | 編集アイコン | csCaptureMouseを除外し、MouseUpより前の自動捕捉解除でクリックが失われる問題を修正 |
-| [ColorPicker](UI/ColorPicker/README.md) | 色選択画面、右下への表示配置 | 本体変更なし。参考元と一致 |
+| [ColorPicker](UI/ColorPicker/README.md) | 共通カラーピッカー、線・系列・文字の選択色 | 1.1.1のパネルを追加。参考元と同一 |
 | [DarkMenu](UI/DarkMenu/README.md) | 値書式プリセット | 本体変更なし |
-| [HorizontalTrackBar](UI/HorizontalTrackBar/README.md) | 候補としてコピー済み、未使用 | 本体変更なし |
-| [VerticalScrollBar](UI/VerticalScrollBar/README.md) | 候補としてコピー済み、未使用 | 本体変更なし |
+| [HorizontalTrackBar](UI/HorizontalTrackBar/README.md) | 線・縁取りの太さ調整 | 本体変更なし |
+| [VerticalScrollBar](UI/VerticalScrollBar/README.md) | 縦長設定画面のスクロール | 本体変更なし |
 | [ShortcutAction](UI/ShortcutAction/README.md) | 候補としてコピー済み、未使用 | 本体変更なし |
 
 各部品のREADMEはコピー元の仕様と当時の確認結果を含む。本プロジェクトでの結果はルートREADMEを参照する。
