@@ -1,0 +1,5 @@
+Win64/
+__history/
+*.dproj.local
+*.identcache
+*.dsk

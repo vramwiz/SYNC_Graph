@@ -1,0 +1,96 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{0B09D630-B788-46FF-8B62-0FBC79BA0439}</ProjectGuid>
+        <ProjectVersion>20.4</ProjectVersion>
+        <FrameworkType>None</FrameworkType>
+        <Config Condition="'$(Config)'==''">Debug</Config>
+        <Platform Condition="'$(Platform)'==''">Win64</Platform>
+        <ProjectName Condition="'$(ProjectName)'==''">SYNC_Graph_Filter</ProjectName>
+        <TargetedPlatforms>2</TargetedPlatforms>
+        <AppType>Library</AppType>
+        <MainSource>SYNC_Graph_Filter.dpr</MainSource>
+        <Base>True</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
+        <Base>true</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Config)'=='Debug' or '$(Cfg_1)'!=''">
+        <Cfg_1>true</Cfg_1>
+        <CfgParent>Base</CfgParent>
+        <Base>true</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="('$(Platform)'=='Win64' and '$(Cfg_1)'=='true') or '$(Cfg_1_Win64)'!=''">
+        <Cfg_1_Win64>true</Cfg_1_Win64>
+        <CfgParent>Cfg_1</CfgParent>
+        <Cfg_1>true</Cfg_1>
+        <Base>true</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Config)'=='Release' or '$(Cfg_2)'!=''">
+        <Cfg_2>true</Cfg_2>
+        <CfgParent>Base</CfgParent>
+        <Base>true</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="('$(Platform)'=='Win64' and '$(Cfg_2)'=='true') or '$(Cfg_2_Win64)'!=''">
+        <Cfg_2_Win64>true</Cfg_2_Win64>
+        <CfgParent>Cfg_2</CfgParent>
+        <Cfg_2>true</Cfg_2>
+        <Base>true</Base>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Base)'!=''">
+        <DCC_UnitSearchPath>Source\Core;Source\Persistence;Source\Rendering;Source\Editor;Source\Shell;Source\Host;Source\UI;Source\Lib\UI\DarkEditor;Source\Lib\UI\DarkComboBox;Source\Lib\UI\ToolbarIcon;Source\Lib\UI\ColorPicker;Source\Lib\UI\DarkMenu;Source\Lib\UI\ShortcutAction;Source\Lib\UI\HorizontalTrackBar;Source\Lib\UI\VerticalScrollBar;Source\Lib\AviUtl2Canvas\Host;Source\Lib\AviUtl2Canvas\UI;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_DcuOutput>$(MSBuildProjectDirectory)\$(Platform)\$(ProjectName)\$(Config)\DCU</DCC_DcuOutput>
+        <GenDll>true</GenDll>
+        <DCC_ExeOutput>.\Win64\Plugin\$(Config)</DCC_ExeOutput>
+        <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
+        <SanitizedProjectName>SYNC_Graph_Filter</SanitizedProjectName>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Cfg_1_Win64)'!=''">
+        <Debugger_HostApplication>D:\aviutl2_v2.1.6a\aviutl2.exe</Debugger_HostApplication>
+        <Debugger_WorkingDirectory>D:\aviutl2_v2.1.6a</Debugger_WorkingDirectory>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Cfg_2_Win64)'!=''">
+        <Debugger_HostApplication>D:\aviutl2_v2.1.6a\aviutl2.exe</Debugger_HostApplication>
+        <Debugger_WorkingDirectory>D:\aviutl2_v2.1.6a</Debugger_WorkingDirectory>
+    </PropertyGroup>
+    <ItemGroup>
+        <DelphiCompile Include="$(MainSource)">
+            <MainSource>MainSource</MainSource>
+        </DelphiCompile>
+        <DCCReference Include="Source\Lib\AviUtl2Canvas\Host\AviUtl2FilterTypes.pas"/>
+        <DCCReference Include="Source\Host\GraphPlugin.pas"/>
+        <BuildConfiguration Include="Base">
+            <Key>Base</Key>
+        </BuildConfiguration>
+        <BuildConfiguration Include="Debug">
+            <Key>Cfg_1</Key>
+            <CfgParent>Base</CfgParent>
+        </BuildConfiguration>
+        <BuildConfiguration Include="Release">
+            <Key>Cfg_2</Key>
+            <CfgParent>Base</CfgParent>
+        </BuildConfiguration>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Delphi.Personality.12</Borland.Personality>
+        <Borland.ProjectType>Application</Borland.ProjectType>
+        <BorlandProject>
+            <Delphi.Personality>
+                <Source>
+                    <Source Name="MainSource">SYNC_Graph_Filter.dpr</Source>
+                </Source>
+            </Delphi.Personality>
+            <Platforms>
+                <Platform value="Win32">False</Platform>
+                <Platform value="Win64">True</Platform>
+            </Platforms>
+        </BorlandProject>
+        <ProjectFileVersion>12</ProjectFileVersion>
+    </ProjectExtensions>
+    <Import Project="$(BDS)\Bin\CodeGear.Delphi.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Delphi.Targets')"/>
+    <Import Project="$(APPDATA)\Embarcadero\$(BDSAPPDATABAoEDIR)\$(PRODUCTVERSION)\UserTools.proj" Condition="Exists('$(APPDATA)\Embarcadero\$(BDSAPPDATABAoEDIR)\$(PRODUCTVERSION)\UserTools.proj')"/>
+    <Import Project="$(MSBuildProjectName).deployproj" Condition="Exists('$(MSBuildProjectName).deployproj')"/>
+    <Target Name="CopyTestPlugin" AfterTargets="Build">
+        <Copy SourceFiles="$(MSBuildProjectDirectory)\Win64\Plugin\$(Config)\SYNC_Graph_Filter.dll" DestinationFiles="$(MSBuildProjectDirectory)\Win64\Plugin\$(Config)\SYNC_Graph_Filter.auf2"/>
+        <Copy SourceFiles="$(BDS)\Redist\win64\sk4d.dll" DestinationFolder="$(MSBuildProjectDirectory)\Win64\Plugin\$(Config)"/>
+    </Target>
+</Project>
