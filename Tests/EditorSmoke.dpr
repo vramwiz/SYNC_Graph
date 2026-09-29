@@ -237,9 +237,9 @@ begin
           WheelEdit:=TGraphNumberEdit(Layout.Components[I]);
       if WheelEdit=nil then raise Exception.Create('Rotation number edit is missing');
       WheelEdit.Text:='10';
+      WheelPoint:=WheelEdit.ClientToScreen(Point(6,WheelEdit.Height div 2));
       WheelHandled:=False;
-      F.OnMouseWheel(F,[],120,WheelEdit.ClientToScreen(
-        Point(6,WheelEdit.Height div 2)),WheelHandled);
+      F.OnMouseWheel(F,[],120,WheelPoint,WheelHandled);
       if not WheelHandled or (WheelEdit.Text<>'20') then
         raise Exception.Create('Form wheel did not reach number edit');
       WheelPoint:=WheelEdit.ClientToScreen(Point(6,WheelEdit.Height div 2));

@@ -10,11 +10,20 @@ begin
   if not Condition then raise Exception.Create('FAIL: '+Name);
   Inc(Count); Writeln('PASS: '+Name);
 end;
+function ValueLabelTop(const Labels:TArray<TGraphLabel>):Single;
+var L:TGraphLabel;
+begin
+  Result:=-1;
+  for L in Labels do
+    if L.ID=2+MaxGraphRows then Exit(L.Bounds.Top);
+end;
 procedure Run;
 var D,E:TGraphDocument; S:TGraphShared; V:TGraphValues; Scale:TGraphScale;
   A:TGraphAnimation; Pixels,Background:TBytes; Labels:TArray<TGraphLabel>;
-  K:TGraphKind; I,AlphaCount:Integer; Failed:Boolean; Text:string; Img:ISkImage;
-  TitleWidth:Single;
+  K:TGraphKind; I,AlphaCount,ValueLabels:Integer;
+  Failed:Boolean; Text:string; Img:ISkImage;
+  TitleWidth,PartialLabelTop,FullLabelTop:Single;
+  Solo:TGraphShared; PartialAlpha,FullAlpha:Integer;
 begin
   D:=TGraphDocument.Create;
   try
@@ -53,11 +62,89 @@ begin
       Check((E.Kind=gkBar) and (E.LabelScales[0]=1) and
         (Length(E.Series)>0),'missing settings use defaults');
     finally E.Free; end;
-    A:=Default(TGraphAnimation); A.ElementMode:=1; A.Progress:=150;
-    Check((A.Element(0)=1) and (A.Element(1)=0.5) and (A.Element(2)=0),'element progress');
-    A.Progress:=50; Check(A.Element(0)=0.5,'reverse progress');
-    A.EnterMode:=1; A.EnterSeconds:=2; A.Time:=1;
-    Check(A.Opacity=0.5,'fade timing'); A:=Default(TGraphAnimation);
+    A:=Default(TGraphAnimation); A.GraphMode:=2; A.Progress:=0;
+    Check(A.CellProgress(2,1,3,2)=1,'no transition shows all cells');
+    A.TransitionMode:=1; A.Progress:=300;
+    Check((A.CellProgress(0,0,3,2)=1) and
+      (A.CellProgress(2,0,3,2)=1) and
+      (A.CellProgress(2,1,3,2)=0),'column-group progress');
+    A.TransitionMode:=2; A.Progress:=300;
+    Check((A.CellProgress(0,0,3,2)=1) and
+      (A.CellProgress(1,0,3,2)=0.5) and
+      (A.CellProgress(2,0,3,2)=0),'row-group progress');
+    A.TransitionMode:=4; A.Progress:=150;
+    Check((A.CellProgress(0,0,3,2)=1) and
+      (A.CellProgress(0,1,3,2)=0.5) and
+      (A.CellProgress(1,0,3,2)=0),'row-major cell progress');
+    A.TransitionMode:=3;
+    Check((A.CellProgress(0,0,3,2)=1) and
+      (A.CellProgress(1,0,3,2)=0.5) and
+      (A.CellProgress(0,1,3,2)=0),'column-major cell progress');
+    A.Progress:=100;
+    Check((A.CellProgress(0,0,3,2)=1) and
+      (A.CellProgress(1,0,3,2)=0),'one cell completes at 100');
+    A.Progress:=600;
+    Check(A.CellProgress(2,1,3,2)=1,'all cells complete at matrix endpoint');
+    A.Progress:=150;
+    A.GraphMode:=1;
+    Check((A.ShapeProgress(1,0,3,2)=1) and
+      (A.CellOpacity(1,0,3,2)=0.5),'fade keeps completed shape');
+    A.GraphMode:=2;
+    Check((A.ShapeProgress(1,0,3,2)=0.5) and
+      (A.CellOpacity(1,0,3,2)=1),'growth uses current shape');
+    A.Progress:=105;
+    Check((A.CellProgress(1,0,3,2)>0) and
+      (A.CellOpacity(1,0,3,2)<1),'growth starts with short fade');
+    A.ZoomPercent:=150; Check(A.ZoomScale=1.5,'focus zoom scale');
+    A:=Default(TGraphAnimation);
+    E:=TGraphDocument.Create;
+    try
+      E.Kind:=gkBar; E.ResizeStructure(1,1); E.ResetBounds(640,480);
+      E.ValueFormat:='0';
+      for I:=0 to High(E.Lines) do E.Lines[I].Kind:=0;
+      Solo:=Default(TGraphShared); Solo.Values:='80';
+      A.TransitionMode:=4; A.GraphMode:=2; A.Progress:=0;
+      Pixels:=RenderGraph(E,Solo,A,640,480,Labels);
+      Check(ValueLabelTop(Labels)<0,'value hidden before animation starts');
+      A.Progress:=50;
+      Pixels:=RenderGraph(E,Solo,A,640,480,Labels);
+      PartialLabelTop:=ValueLabelTop(Labels);
+      Check(PartialLabelTop>=0,'value appears during growth');
+      Check(Pixels[(160*640+320)*4+3]=0,'growth geometry stops at current value');
+      A.Progress:=100;
+      Pixels:=RenderGraph(E,Solo,A,640,480,Labels);
+      FullLabelTop:=ValueLabelTop(Labels);
+      Check((FullLabelTop>=0) and (PartialLabelTop>FullLabelTop+40),
+        'value label follows growing bar');
+      FullAlpha:=Pixels[(160*640+320)*4+3];
+      A.GraphMode:=1; A.Progress:=50;
+      Pixels:=RenderGraph(E,Solo,A,640,480,Labels);
+      PartialAlpha:=Pixels[(160*640+320)*4+3];
+      Check((Abs(ValueLabelTop(Labels)-FullLabelTop)<1) and
+        (PartialAlpha>0) and (PartialAlpha<FullAlpha),
+        'fade keeps final geometry and reduces opacity');
+      A:=Default(TGraphAnimation); A.Progress:=100; A.ZoomPercent:=100;
+      Pixels:=RenderGraph(E,Solo,A,640,480,Labels);
+      Check(Pixels[(200*640+110)*4+3]=0,'zoom sample starts outside bar');
+      A.ZoomPercent:=150;
+      Pixels:=RenderGraph(E,Solo,A,640,480,Labels);
+      Check(Pixels[(200*640+110)*4+3]>0,'focus zoom expands around active bar');
+    finally E.Free; end;
+    E:=TGraphDocument.Create;
+    try
+      E.Kind:=gkRadar; E.ResizeStructure(3,1); E.ResetBounds(640,480);
+      for I:=0 to High(E.Lines) do E.Lines[I].Kind:=0;
+      Solo:=Default(TGraphShared); Solo.Values:='80'#13#10'80'#13#10'80';
+      A:=Default(TGraphAnimation); A.TransitionMode:=4;
+      A.GraphMode:=2; A.Progress:=100;
+      Pixels:=RenderGraph(E,Solo,A,640,480,Labels);
+      PartialAlpha:=Pixels[(205*640+335)*4+3];
+      A.Progress:=150;
+      Pixels:=RenderGraph(E,Solo,A,640,480,Labels);
+      Check(Pixels[(205*640+335)*4+3]>PartialAlpha,
+        'radar fills center and first two vertices during second cell');
+    finally E.Free; end;
+    A:=Default(TGraphAnimation);
     D.Kind:=gkBar; D.LabelScales[0]:=1;
     Pixels:=RenderGraph(D,S,A,640,480,Labels);
     TitleWidth:=0;
@@ -78,6 +165,16 @@ begin
       Check(Length(Labels)>0,'editable labels '+IntToStr(Ord(K)));
       Img:=TSkImage.MakeRasterCopy(TSkImageInfo.Create(640,480,TSkColorType.RGBA8888,TSkAlphaType.Unpremul),@Pixels[0],640*4);
       Img.EncodeToFile('graph-'+IntToStr(Ord(K))+'.png');
+      A.TransitionMode:=4; A.GraphMode:=2; A.Progress:=50;
+      Pixels:=RenderGraph(D,S,A,640,480,Labels);
+      ValueLabels:=0;
+      for I:=0 to High(Labels) do
+        if Labels[I].ID>=2+MaxGraphRows then Inc(ValueLabels);
+      Check(ValueLabels>0,'animated values render '+IntToStr(Ord(K)));
+      A.GraphMode:=1;
+      Pixels:=RenderGraph(D,S,A,640,480,Labels);
+      Check(Length(Pixels)=640*480*4,'animated fade renders '+IntToStr(Ord(K)));
+      A:=Default(TGraphAnimation);
     end;
     Background:=TBytes.Create(0,0,255,255); Pixels:=TBytes.Create(255,0,0,128);
     CompositeRgba(Background,Pixels);

@@ -33,6 +33,21 @@ implementation
 
 uses System.Math, GraphNumberEdit, HorizontalTrackBarControl;
 
+function ChildAtScreen(Root:TWinControl; const ScreenPoint:TPoint):TControl;
+var I:Integer; P:TPoint; Child:TControl;
+begin
+  P:=Root.ScreenToClient(ScreenPoint);
+  for I:=Root.ControlCount-1 downto 0 do
+  begin
+    Child:=Root.Controls[I];
+    if not Child.Visible or not PtInRect(Child.BoundsRect,P) then Continue;
+    if Child is TWinControl then
+      Exit(ChildAtScreen(TWinControl(Child),ScreenPoint));
+    Exit(Child);
+  end;
+  Result:=Root;
+end;
+
 constructor TGraphSettingsPane.Create(AOwner:TComponent);
 begin
   inherited;
@@ -83,11 +98,12 @@ end;
 
 procedure TGraphSettingsPane.RouteWheel(Sender:TObject; Shift:TShiftState;
   WheelDelta:Integer; MousePos:TPoint; var Handled:Boolean);
-var P:TPoint; Target:TWinControl; Slider:THorizontalTrackBarControl;
+var P:TPoint; Target:TControl; Slider:THorizontalTrackBarControl;
 begin
   P:=ScreenToClient(MousePos);
   if not PtInRect(ClientRect,P) then Exit;
-  Target:=FindVCLWindow(MousePos);
+  // フォームが前面でなくても設定欄自身の子階層から対象を判定する。
+  Target:=ChildAtScreen(Self,MousePos);
   if Target is TGraphNumberEdit then
     if TGraphNumberEdit(Target).AdjustAt(MousePos,WheelDelta) then
     begin Handled:=True; Exit; end;

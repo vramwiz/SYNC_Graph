@@ -8,6 +8,10 @@ type
   TFinalize=procedure; cdecl;
   TTable=function:PFILTER_PLUGIN_TABLE; cdecl;
   PItem=^TFILTER_ITEM_STRING;
+  PSelect=^TFILTER_ITEM_SELECT;
+  PTrack=^TFILTER_ITEM_TRACK;
+  TSelectItems=array[0..5] of TFILTER_ITEM_SELECT_ITEM;
+  PSelectItems=^TSelectItems;
 var Table:PFILTER_PLUGIN_TABLE; Calls:Integer; Output:TBytes;
 procedure GetImage(Buffer:PPIXEL_RGBA); cdecl;
 var I:Integer; P:PByte;
@@ -20,21 +24,25 @@ procedure SetImage(Buffer:PPIXEL_RGBA; W,H:Integer); cdecl;
 begin
   Inc(Calls); SetLength(Output,W*H*4); Move(Buffer^,Output[0],Length(Output));
 end;
-procedure SetText(const Name:string; Value:PWideChar);
+function FindItem(const Name:string):Pointer;
 var P:PPointer;
 begin
   P:=PPointer(Table^.Items);
   while P^<>nil do
   begin
-    if string(PItem(P^)^.Name)=Name then begin PItem(P^)^.Value:=Value; Exit; end;
+    if string(PItem(P^)^.Name)=Name then Exit(P^);
     Inc(P);
   end;
   raise Exception.Create('Item missing: '+Name);
 end;
+procedure SetText(const Name:string; Value:PWideChar);
+begin PItem(FindItem(Name))^.Value:=Value; end;
 procedure Run;
 var Lib:HMODULE; Init:TInitialize; Done:TFinalize; GetTable:TTable;
   Scene:TSCENE_INFO; Obj:TOBJECT_INFO; Video:TFILTER_PROC_VIDEO;
-  D:TGraphDocument; S:TGraphShared; Data:string; K:TGraphKind; I,Colored:Integer;
+  D:TGraphDocument; S:TGraphShared; Data:string; K:TGraphKind;
+  I,Colored,StartPixel,FullPixel:Integer;
+  Transition,GraphMode:PSelect; Progress,Zoom:PTrack;
 begin
   Lib:=LoadLibrary(PChar(ParamStr(1)));
   if Lib=0 then RaiseLastOSError;
@@ -48,6 +56,20 @@ begin
       Table:=GetTable();
       if (Table=nil) or (string(Table^.Name)<>'グラフ') or (string(Table^.Label_)<>'SYNC') then raise Exception.Create('Wrong registration');
       Writeln('PASS plugin exports and SYNC registration');
+      Transition:=PSelect(FindItem('推移方法'));
+      GraphMode:=PSelect(FindItem('グラフアニメーション'));
+      Progress:=PTrack(FindItem('進行'));
+      Zoom:=PTrack(FindItem('演出 拡大率'));
+      if (string(Transition^.ItemType)<>'select') or
+        (string(PSelectItems(Transition^.List)^[0].Name)<>'なし') or
+        (string(PSelectItems(Transition^.List)^[4].Name)<>'セル行方向') or
+        (string(PSelectItems(GraphMode^.List)^[1].Name)<>'フェード') or
+        (string(PSelectItems(GraphMode^.List)^[2].Name)<>'伸長') or
+        (Progress^.Value<>0) or (Progress^.S<>0) or
+        (Progress^.E<>MaxGraphRows*MaxGraphColumns*100) or
+        (Zoom^.Value<>100) or (Zoom^.S<>100) or (Zoom^.E<150) then
+        raise Exception.Create('Animation host parameters are wrong');
+      Writeln('PASS animation host parameters');
       if Table^.Func_Proc_Video(nil)<>1 then raise Exception.Create('nil callback failed');
       Scene:=Default(TSCENE_INFO); Scene.Width:=640; Scene.Height:=480;
       Obj:=Default(TOBJECT_INFO); Obj.ID:=1; Obj.EffectID:=2; Obj.Width:=640; Obj.Height:=480;
@@ -75,6 +97,25 @@ begin
           if Colored<100 then raise Exception.Create('Graph not composited');
           Writeln('PASS plugin render ',Ord(K));
         end;
+        D.Kind:=gkBar; D.ResizeStructure(1,1);
+        S.Values:='80'; Data:=SaveGraph(D);
+        SetText('設定データ',PChar(Data)); SetText('値',PChar(S.Values));
+        Transition^.Value:=4; GraphMode^.Value:=2; Progress^.Value:=0;
+        if Table^.Func_Proc_Video(@Video)<>1 then
+          raise Exception.Create('Animation start callback failed');
+        StartPixel:=Output[(300*640+320)*4];
+        Progress^.Value:=100;
+        if Table^.Func_Proc_Video(@Video)<>1 then
+          raise Exception.Create('Animation end callback failed');
+        FullPixel:=Output[(300*640+320)*4];
+        if FullPixel<=StartPixel then
+          raise Exception.Create('Host progress did not reveal the bar');
+        Zoom^.Value:=150;
+        if Table^.Func_Proc_Video(@Video)<>1 then
+          raise Exception.Create('Zoom callback failed');
+        if Output[(200*640+110)*4]=0 then
+          raise Exception.Create('Host zoom did not expand the bar');
+        Writeln('PASS host animation progress and focus zoom');
       finally D.Free; end;
     finally Done; end;
   finally FreeLibrary(Lib); end;

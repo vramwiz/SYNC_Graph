@@ -8,13 +8,15 @@ function RenderGraph(Doc:TGraphDocument; const Shared:TGraphShared;
   out Labels:TArray<TGraphLabel>; OnlyLabelID:Integer=-1;
   ExcludeLabelID:Integer=-1):TBytes;
 implementation
-uses System.Types, System.Skia, GraphValues, GraphCartesian, GraphPolar;
+uses System.Types, System.Skia, GraphValues, GraphCartesian, GraphPolar,
+  GraphAnimationFocus;
 
 function RenderGraph(Doc:TGraphDocument; const Shared:TGraphShared;
   const Animation:TGraphAnimation; Width,Height:Integer;
   out Labels:TArray<TGraphLabel>; OnlyLabelID:Integer;
   ExcludeLabelID:Integer):TBytes;
 var Surface:ISkSurface; P:TGraphPainter; Values:TGraphValues; B:TRectF;
+  Focus:TPointF; Zoom:Single; Zoomed:Boolean;
 begin
   Result:=nil; Labels:=nil;
   if Doc.Kind=gkNone then Exit;
@@ -24,7 +26,18 @@ begin
   Surface:=TSkSurface.MakeRaster(Width,Height);
   if Surface=nil then raise EOutOfMemory.Create('描画領域を確保できません。');
   Surface.Canvas.Clear(0);
-  P:=TGraphPainter.Create(Surface.Canvas,Doc,Animation.Opacity);
+  Zoom:=Animation.ZoomScale; Zoomed:=Zoom>1;
+  if Zoomed then
+  begin
+    Focus:=CurrentGraphFocus(Doc,Values,Animation);
+    Surface.Canvas.Save;
+    // 映像の外へ拡大描画が漏れないように、変換前のフレームで切り取る。
+    Surface.Canvas.ClipRect(RectF(0,0,Width,Height));
+    Surface.Canvas.Translate(Focus.X,Focus.Y);
+    Surface.Canvas.Scale(Zoom,Zoom);
+    Surface.Canvas.Translate(-Focus.X,-Focus.Y);
+  end;
+  P:=TGraphPainter.Create(Surface.Canvas,Doc,1);
   try
     P.OnlyLabelID:=OnlyLabelID;
     P.ExcludeLabelID:=ExcludeLabelID;
@@ -43,6 +56,9 @@ begin
     if not Surface.ReadPixels(TSkImageInfo.Create(Width,Height,TSkColorType.RGBA8888,
       TSkAlphaType.Unpremul),@Result[0],Width*4) then
       raise EInvalidOp.Create('描画画像を読み出せません。');
-  finally P.Free; end;
+  finally
+    P.Free;
+    if Zoomed then Surface.Canvas.Restore;
+  end;
 end;
 end.

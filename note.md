@@ -102,7 +102,7 @@ msbuild SYNC_Graph_Filter.dproj /t:Build /p:Config=Debug /p:Platform=Win64 /v:mi
 msbuild SYNC_Graph_Filter.dproj /t:Build /p:Config=Release /p:Platform=Win64 /v:minimal
 ```
 
-- 出力: `Win64/Plugin/<構成>/SYNC_Graph_Filter.auf2`
+- ビルド中のDLLはプロジェクト直下に生成し、標準のビルド後処理で配置先へauf2としてコピーしてからDLLを削除する。
 - 配置先: `C:\ProgramData\aviutl2\Plugin\SYNC_Graph\SYNC_Graph_Filter.auf2`
 - 現在の確認ホスト: `D:\aviutl2_v2.1.6a\aviutl2.exe`
 - IDE／コマンドラインとも通常ビルドで自動配置する。事前にAviUtl2を終了する。
@@ -121,3 +121,11 @@ msbuild SYNC_Graph_Filter.dproj /t:Build /p:Config=Release /p:Platform=Win64 /v:
 Debug／Releaseともプロジェクト直下にDLLを生成する。標準のビルド前イベントで配置先フォルダーを作成し、ビルド後イベントのcopy /Yでauf2名へのコピーとLib/Skia/Win64/sk4d.dllのコピーを行う。両コピー成功後に元DLLだけを削除する。参照元自体には削除処理はない。
 
 配置先はC:\ProgramData\aviutl2\Plugin\SYNC_Graph。独自の後処理スクリプト、GraphInstall、NoInstall、Win64/Pluginへの二重出力は廃止した。RSM・DCUは保持する。使用中のプラグインへのコピー失敗はビルドエラーとなる。旧Win64/Pluginの過去生成物は未清掃。
+
+## 再開メモ（2026-09-30）
+
+- グラフアニメーションはAviUtl2側の「推移方法」「グラフアニメーション」「進行」「演出 拡大率」で実装済み。設定画面には追加していない。推移方法は「なし／列／行／セル列方向／セル行方向」。進行の論理上の終点は要素数×データ数×100。登録時のトラック上限はSDK上固定なので、最大構造64×256×100を登録する。列・行は組内を同時進行、セル方向は1セルずつ100で進む。グラフアニメーションは「なし／フェード／伸長」。進行0で静止画を見せる場合は推移方法「なし」を使う。
+- N角形の伸長中は、隣り合う2頂点が登場した時点で中心を含む三角形を塗る。最終頂点まで進むと閉じる面も描く。描画は `Source/Rendering/Charts/GraphPolar.pas`、順序計算は `Source/Core/GraphAnimation.pas`、焦点計算は `Source/Rendering/Animation/GraphAnimationFocus.pas` を参照する。
+- ユニットは用途別に整理済み。`Source/Rendering/Charts` はグラフ種類別描画、`Source/UI/Settings/Panels` は設定群、`Source/UI/Settings/Controls` は数値入力、`Source/Editor/Interaction` は文字装飾ハンドル。`GraphView` は選択とドラッグの接続を担当し、装飾値の計算・描画は `GraphTextDecorations` に分離した。新しいユニットを増やす際は所属フォルダと `SYNC_Graph_Filter.dproj` の検索パスを確認する。テストスクリプトは `Source` 以下のフォルダを再帰的に検索する。
+- 最終確認はWin64 Debug／Releaseビルド、GraphTests 51項目、EditorSmoke、PluginSmokeで成功。コンパイラ警告・エラーは0、`git -c core.safecrlf=false diff --check` も成功。実AviUtl2でのキーフレーム操作と見た目はユーザー確認範囲であり、自動検証では未実施。
+- `Apu2/sample.aup2` と未追跡の `グラフプラグイン_アニメーション仕様検討.md` はユーザーの作業を含むため、再開時に上書きしない。既存差分はコミットせず保持している。

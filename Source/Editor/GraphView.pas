@@ -33,7 +33,6 @@ type
     function SelectedBounds:TRectF;
     function SelectedLabelRole:TTextRole;
     procedure DrawDecorations(const Bounds:TRectF);
-    function DecorationPoint(Kind:Integer; const Bounds:TRectF):TPoint;
     function HitDecoration(X,Y:Integer):Integer;
     procedure BeginDrag(const P:TPointF);
     procedure UpdateCursor(X,Y:Integer);
@@ -59,8 +58,8 @@ type
     property OnSelectionChanged:TNotifyEvent read FOnSelectionChanged write FOnSelectionChanged;
   end;
 implementation
-uses System.Math, Winapi.Windows, GraphCanvasFrame, GraphViewBitmapCache,
-  GraphViewBounds;
+uses System.Math, GraphCanvasFrame, GraphViewBitmapCache,
+  GraphViewBounds, GraphTextDecorations;
 const LabelMoveBase=1000; LabelResizeBase=100000; DecorationBase=1000000;
 
 constructor TGraphView.Create(AOwner:TComponent);
@@ -137,60 +136,23 @@ begin
   if LabelIndex(FSelectedLabelID)>=0 then DrawDecorations(SelectedBounds);
 end;
 
-function TGraphView.DecorationPoint(Kind:Integer; const Bounds:TRectF):TPoint;
-var Step,Margin,StartX,Y:Integer;
-begin
-  Step:=MulDiv(34,CurrentPPI,96);
-  Margin:=MulDiv(20,CurrentPPI,96);
-  StartX:=EnsureRange(Round(PanX+Bounds.Left*Zoom)+Margin,
-    Margin,Max(Margin,ClientWidth-Margin-3*Step));
-  Y:=EnsureRange(Round(PanY+Bounds.Bottom*Zoom)+MulDiv(28,CurrentPPI,96),
-    Margin,Max(Margin,ClientHeight-Margin));
-  Result:=Point(StartX+Kind*Step,Y);
-end;
-
 function TGraphView.HitDecoration(X,Y:Integer):Integer;
-var I,K,Radius:Integer; P:TPoint; B:TRectF;
+var I:Integer;
 begin
   Result:=-1;
   I:=LabelIndex(FSelectedLabelID);
   if I<0 then Exit;
-  B:=FLabels[I].Bounds;
-  Radius:=MulDiv(13,CurrentPPI,96);
-  for K:=0 to 3 do
-  begin
-    P:=DecorationPoint(K,B);
-    if (Abs(X-P.X)<=Radius) and (Abs(Y-P.Y)<=Radius) then Exit(K);
-  end;
+  Result:=HitTextDecoration(X,Y,FLabels[I].Bounds,
+    CurrentPPI,ClientWidth,ClientHeight,PanX,PanY,Zoom);
 end;
 
 procedure TGraphView.DrawDecorations(const Bounds:TRectF);
-const Captions:array[0..3] of string=('縁','影','縁ぼ','影ぼ');
-var K,I,Radius:Integer; P:TPoint; S:TTextStyle; Active:Boolean; Value:string;
+var I:Integer;
 begin
   I:=LabelIndex(FSelectedLabelID);
   if I<0 then Exit;
-  S:=FDoc.TextStyles[FLabels[I].Role];
-  Radius:=MulDiv(12,CurrentPPI,96);
-  Canvas.Font.Name:='Yu Gothic UI'; Canvas.Font.Size:=8;
-  Canvas.Pen.Color:=$00E9B456;
-  for K:=0 to 3 do
-  begin
-    P:=DecorationPoint(K,Bounds);
-    case K of
-      0:begin Active:=S.OutlineWidth>0; Value:=IntToStr(Round(S.OutlineWidth)); end;
-      1:begin Active:=(S.ShadowX<>0) or (S.ShadowY<>0); Value:=Format('%d,%d',[Round(S.ShadowX),Round(S.ShadowY)]); end;
-      2:begin Active:=S.OutlineBlur>0; Value:=IntToStr(Round(S.OutlineBlur)); end;
-    else Active:=S.ShadowBlur>0; Value:=IntToStr(Round(S.ShadowBlur)); end;
-    if Active then Canvas.Brush.Color:=$004A3B24 else Canvas.Brush.Color:=$00303030;
-    Canvas.Ellipse(P.X-Radius,P.Y-Radius,P.X+Radius+1,P.Y+Radius+1);
-    Canvas.Brush.Style:=bsClear; Canvas.Font.Color:=$00E9B456;
-    Canvas.TextOut(P.X-Canvas.TextWidth(Captions[K]) div 2,
-      P.Y-Canvas.TextHeight(Captions[K]) div 2,Captions[K]);
-    Canvas.Font.Color:=$00EEEEEE;
-    Canvas.TextOut(P.X-Canvas.TextWidth(Value) div 2,P.Y+Radius+2,Value);
-    Canvas.Brush.Style:=bsSolid;
-  end;
+  DrawTextDecorations(Canvas,Bounds,FDoc.TextStyles[FLabels[I].Role],
+    CurrentPPI,ClientWidth,ClientHeight,PanX,PanY,Zoom);
 end;
 
 function TGraphView.LabelIndex(ID:Integer):Integer;
@@ -307,7 +269,7 @@ end;
 
 procedure TGraphView.MouseMove(Shift:TShiftState; X,Y:Integer);
 var P,D:TPointF; I,H:Integer; OldB,NewB:TRectF; Factor,WX,HY:Single;
-    S:TTextStyle; Role:TTextRole;
+    Role:TTextRole;
 begin
   if (FTarget=-3) or not MouseCapture then
   begin
@@ -321,27 +283,9 @@ begin
     I:=LabelIndex(FSelectedLabelID);
     if I<0 then Exit;
     Role:=FLabels[I].Role;
-    S:=FInitialTextStyle;
     D:=P-FDragStart;
-    case FTarget-DecorationBase of
-      0:begin
-          S.OutlineWidth:=EnsureRange(Round(S.OutlineWidth+D.X/4),0,30);
-          if S.OutlineWidth=0 then S.OutlineBlur:=0;
-        end;
-      1:begin
-          S.ShadowX:=EnsureRange(Round(S.ShadowX+D.X),-100,100);
-          S.ShadowY:=EnsureRange(Round(S.ShadowY+D.Y),-100,100);
-          if Abs(S.ShadowX)<=2 then S.ShadowX:=0;
-          if Abs(S.ShadowY)<=2 then S.ShadowY:=0;
-          if (S.ShadowX=0) and (S.ShadowY=0) then S.ShadowBlur:=0;
-        end;
-      2:begin
-          S.OutlineBlur:=EnsureRange(Round(S.OutlineBlur+D.X/4),0,30);
-          if (S.OutlineBlur>0) and (S.OutlineWidth=0) then S.OutlineWidth:=1;
-        end;
-      3:S.ShadowBlur:=EnsureRange(Round(S.ShadowBlur+D.X/4),0,30);
-    end;
-    FDoc.TextStyles[Role]:=S;
+    FDoc.TextStyles[Role]:=DragTextDecoration(FInitialTextStyle,
+      FTarget-DecorationBase,D);
     Invalidate;
     if Assigned(FOnDecorationChanged) then FOnDecorationChanged(Self);
     Exit;

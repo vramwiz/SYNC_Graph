@@ -37,7 +37,7 @@
         <Base>true</Base>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base)'!=''">
-        <DCC_UnitSearchPath>Source\Core;Source\Persistence;Source\Rendering;Source\Editor;Source\Editor\Geometry;Source\Editor\Preview;Source\Shell;Source\Host;Source\UI\Settings;Source\UI\Text;Source\Lib\UI\DarkEditor;Source\Lib\UI\DarkComboBox;Source\Lib\UI\ToolbarIcon;Source\Lib\UI\ColorPicker;Source\Lib\UI\DarkMenu;Source\Lib\UI\ShortcutAction;Source\Lib\UI\HorizontalTrackBar;Source\Lib\UI\VerticalScrollBar;Source\Lib\AviUtl2Canvas\Host;Source\Lib\AviUtl2Canvas\UI;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>Source\Core;Source\Persistence;Source\Rendering;Source\Rendering\Animation;Source\Rendering\Charts;Source\Editor;Source\Editor\Geometry;Source\Editor\Interaction;Source\Editor\Preview;Source\Shell;Source\Host;Source\UI\Settings;Source\UI\Settings\Controls;Source\UI\Settings\Panels;Source\UI\Text;Source\Lib\UI\DarkEditor;Source\Lib\UI\DarkComboBox;Source\Lib\UI\ToolbarIcon;Source\Lib\UI\ColorPicker;Source\Lib\UI\DarkMenu;Source\Lib\UI\ShortcutAction;Source\Lib\UI\HorizontalTrackBar;Source\Lib\UI\VerticalScrollBar;Source\Lib\AviUtl2Canvas\Host;Source\Lib\AviUtl2Canvas\UI;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_DcuOutput>$(MSBuildProjectDirectory)\$(Platform)\$(ProjectName)\$(Config)\DCU</DCC_DcuOutput>
         <GenDll>true</GenDll>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
