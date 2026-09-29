@@ -62,7 +62,7 @@ begin inherited; UpdateMetrics; end;
 procedure TDarkComboBox.Change;
 begin inherited; Invalidate; end;
 procedure TDarkComboBox.DrawItem(Index: Integer; Rect: TRect; State: TOwnerDrawState);
-var TextRect: TRect; S: string;
+var TextRect: TRect; S: string; OldFont: HGDIOBJ;
 begin
   Canvas.Font.Assign(Font); Canvas.Brush.Style := bsSolid;
   if odSelected in State then Canvas.Brush.Color := $00613F20
@@ -73,12 +73,17 @@ begin
   if (Index>=0) and (Index<Items.Count) then S := Items[Index] else S := '';
   TextRect := Rect; InflateRect(TextRect,-MulDiv(8,CurrentPPI,96),0);
   SetBkMode(Canvas.Handle,TRANSPARENT);
-  DrawText(Canvas.Handle,PChar(S),Length(S),TextRect,
-    DT_SINGLELINE or DT_VCENTER or DT_END_ELLIPSIS or DT_NOPREFIX);
+  OldFont := SelectObject(Canvas.Handle,Canvas.Font.Handle);
+  try
+    SetTextColor(Canvas.Handle,ColorToRGB(Canvas.Font.Color));
+    DrawText(Canvas.Handle,PChar(S),Length(S),TextRect,
+      DT_SINGLELINE or DT_VCENTER or DT_END_ELLIPSIS or DT_NOPREFIX);
+  finally SelectObject(Canvas.Handle,OldFont); end;
   if odFocused in State then Canvas.DrawFocusRect(Rect);
 end;
 procedure TDarkComboBox.PaintClosed;
-var C: TCanvas; DC: HDC; R,TextRect: TRect; X,Y,A: Integer; S: string;
+var C: TCanvas; DC: HDC; R,TextRect: TRect; X,Y,A: Integer;
+    S: string; OldFont: HGDIOBJ;
 begin
   DC := GetDC(Handle); C := TCanvas.Create;
   try
@@ -93,7 +98,12 @@ begin
     Dec(TextRect.Right,MulDiv(24,CurrentPPI,96));
     if ItemIndex>=0 then S := Items[ItemIndex] else S := TextHint;
     SetBkMode(DC,TRANSPARENT);
-    DrawText(DC,PChar(S),Length(S),TextRect,DT_SINGLELINE or DT_VCENTER or DT_END_ELLIPSIS or DT_NOPREFIX);
+    OldFont := SelectObject(DC,C.Font.Handle);
+    try
+      SetTextColor(DC,ColorToRGB(C.Font.Color));
+      DrawText(DC,PChar(S),Length(S),TextRect,
+        DT_SINGLELINE or DT_VCENTER or DT_END_ELLIPSIS or DT_NOPREFIX);
+    finally SelectObject(DC,OldFont); end;
     X := R.Right-MulDiv(14,CurrentPPI,96); Y := R.Height div 2;
     A := Max(2,MulDiv(4,CurrentPPI,96));
     C.Pen.Color := C.Font.Color;

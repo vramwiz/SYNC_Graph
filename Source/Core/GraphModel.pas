@@ -45,6 +45,7 @@ type
     Lines: array[0..5] of TLineStyle; // X軸・Y軸・目盛線・外枠・系列線・円区切り線の順。
     Series: TArray<TSeriesStyle>;
     Offsets: TArray<TPointF>;
+    LabelScales: TArray<Single>;
     constructor Create;
     procedure ResizeStructure(ARows, AColumns: Integer);
     procedure ResetBounds(Width, Height: Integer);
@@ -117,6 +118,9 @@ begin
   end;
   if Length(Offsets) < 2 + MaxGraphRows + MaxGraphRows * MaxGraphColumns then
     SetLength(Offsets, 2 + MaxGraphRows + MaxGraphRows * MaxGraphColumns);
+  OldCount := Length(LabelScales);
+  if OldCount < Length(Offsets) then SetLength(LabelScales, Length(Offsets));
+  for I := OldCount to High(LabelScales) do LabelScales[I] := 1;
 end;
 
 procedure TGraphDocument.ResetBounds(Width, Height: Integer);

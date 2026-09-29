@@ -105,7 +105,7 @@ msbuild SYNC_Graph_Filter.dproj /t:Build /p:Config=Release /p:Platform=Win64 /v:
 - 出力: `Win64/Plugin/<構成>/SYNC_Graph_Filter.auf2`
 - 配置先: `C:\ProgramData\aviutl2\Plugin\SYNC_Graph\SYNC_Graph_Filter.auf2`
 - 現在の確認ホスト: `D:\aviutl2_v2.1.6a\aviutl2.exe`
-- IDEビルドはローカル出力まで。配置するときはAviUtl2を終了し、次を実行する。
+- IDE／コマンドラインとも通常ビルドで自動配置する。事前にAviUtl2を終了する。
 
 ```powershell
 .\Source\Lib\AviUtl2Canvas\Tools\build.ps1 -Config Release -Install
@@ -115,3 +115,9 @@ msbuild SYNC_Graph_Filter.dproj /t:Build /p:Config=Release /p:Platform=Win64 /v:
 
 ## UI改良の反映先
 再利用できるUI改良はDelphiVclAppTemplate/Source/Libへ登録・反映して本プロジェクトで採用する。グラフ固有の画面構成と操作は本プロジェクトに残す。AviUtl2の起動・操作による確認はユーザーが行う。
+
+## ビルド後処理（SYNC_ScreenLayout準拠）
+
+Debug／Releaseともプロジェクト直下にDLLを生成する。標準のビルド前イベントで配置先フォルダーを作成し、ビルド後イベントのcopy /Yでauf2名へのコピーとLib/Skia/Win64/sk4d.dllのコピーを行う。両コピー成功後に元DLLだけを削除する。参照元自体には削除処理はない。
+
+配置先はC:\ProgramData\aviutl2\Plugin\SYNC_Graph。独自の後処理スクリプト、GraphInstall、NoInstall、Win64/Pluginへの二重出力は廃止した。RSM・DCUは保持する。使用中のプラグインへのコピー失敗はビルドエラーとなる。旧Win64/Pluginの過去生成物は未清掃。

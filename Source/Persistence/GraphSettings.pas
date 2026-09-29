@@ -61,6 +61,13 @@ begin
         S:=TJSONObject.Create; A.AddElement(S); Number(S,'id',I);
         Number(S,'x',Doc.Offsets[I].X); Number(S,'y',Doc.Offsets[I].Y);
       end;
+    A:=TJSONArray.Create; O.AddPair('labelScales',A);
+    for I:=0 to High(Doc.LabelScales) do
+      if Doc.LabelScales[I]<>1 then
+      begin
+        S:=TJSONObject.Create; A.AddElement(S);
+        Number(S,'id',I); Number(S,'scale',Doc.LabelScales[I]);
+      end;
     Result:=O.ToJSON;
   finally O.Free; end;
 end;
@@ -84,7 +91,9 @@ begin
       O:=TJSONObject(V);
       // 旧キャンバステストの表示設定は、未設定グラフとして安全に移行する。
       if O.GetValue<Double>('version',0)=1 then Exit;
-      if O.GetValue<Double>('version',0)<>2 then raise EConvertError.Create('未対応の設定データ版です。');
+      if (O.GetValue<Double>('version',0)<>0) and
+        (O.GetValue<Double>('version',0)<>2) then
+        raise EConvertError.Create('未対応の設定データ版です。');
       Result.Kind:=TGraphKind(Trunc(N(O,'kind',0,0,4)));
       Result.ResizeStructure(Trunc(N(O,'rows',3,1,MaxGraphRows)),Trunc(N(O,'columns',3,1,MaxGraphColumns)));
       Result.Bounds:=TRectF.Create(N(O,'x',0,-100000,100000),N(O,'y',0,-100000,100000),0,0);
@@ -94,22 +103,28 @@ begin
       Result.Rotation:=N(O,'rotation',0,-360,360); Result.NameLayout:=Trunc(N(O,'nameLayout',0,0,2));
       Result.Minimum:=O.GetValue<string>('minimum',''); Result.Maximum:=O.GetValue<string>('maximum','');
       Result.Interval:=O.GetValue<string>('interval',''); Result.ValueFormat:=O.GetValue<string>('format','');
-      A:=O.GetValue<TJSONArray>('series');
-      if A.Count>MaxGraphColumns then raise EConvertError.Create('系列設定が多すぎます。');
-      if Length(Result.Series)<A.Count then SetLength(Result.Series,A.Count);
-      for I:=0 to A.Count-1 do
+      if O.GetValue('series') is TJSONArray then
       begin
-        S:=A.Items[I] as TJSONObject;
-        Result.Series[I].LineColor:=Trunc(N(S,'line',Palette(I),0,$FFFFFFFF));
-        Result.Series[I].FillColor:=Trunc(N(S,'fill',Palette(I),0,$FFFFFFFF));
-        Result.Series[I].Transparency:=N(S,'transparency',0,0,100);
-        Result.Series[I].Marker:=Trunc(N(S,'marker',0,0,2));
+        A:=O.GetValue<TJSONArray>('series');
+        if A.Count>MaxGraphColumns then raise EConvertError.Create('系列設定が多すぎます。');
+        if Length(Result.Series)<A.Count then SetLength(Result.Series,A.Count);
+        for I:=0 to A.Count-1 do
+        begin
+          S:=A.Items[I] as TJSONObject;
+          Result.Series[I].LineColor:=Trunc(N(S,'line',Palette(I),0,$FFFFFFFF));
+          Result.Series[I].FillColor:=Trunc(N(S,'fill',Palette(I),0,$FFFFFFFF));
+          Result.Series[I].Transparency:=N(S,'transparency',0,0,100);
+          Result.Series[I].Marker:=Trunc(N(S,'marker',0,0,2));
+        end;
       end;
-      A:=O.GetValue<TJSONArray>('text');
-      if A.Count<>4 then raise EConvertError.Create('文字装飾の分類数が不正です。');
-      for R:=Low(TTextRole) to High(TTextRole) do
+      if O.GetValue('text') is TJSONArray then
       begin
-        S:=A.Items[Ord(R)] as TJSONObject;
+        A:=O.GetValue<TJSONArray>('text');
+        if A.Count>4 then raise EConvertError.Create('文字装飾の分類数が不正です。');
+        for I:=0 to A.Count-1 do
+        begin
+        R:=TTextRole(I);
+        S:=A.Items[I] as TJSONObject;
         Result.TextStyles[R].Font:=S.GetValue<string>('font','Yu Gothic UI');
         Result.TextStyles[R].Size:=N(S,'size',28,1,500);
         Result.TextStyles[R].Color:=Trunc(N(S,'color',$FFFFFFFF,0,$FFFFFFFF));
@@ -122,24 +137,42 @@ begin
         Result.TextStyles[R].ShadowX:=N(S,'shadowX',0,-100,100);
         Result.TextStyles[R].ShadowY:=N(S,'shadowY',0,-100,100);
         Result.TextStyles[R].ShadowBlur:=N(S,'shadowBlur',0,0,30);
+        end;
       end;
-      A:=O.GetValue<TJSONArray>('lines');
-      if (A.Count<4) or (A.Count>Length(Result.Lines)) then raise EConvertError.Create('線設定の分類数が不正です。');
-      for I:=0 to A.Count-1 do
+      if O.GetValue('lines') is TJSONArray then
       begin
+        A:=O.GetValue<TJSONArray>('lines');
+        if A.Count>Length(Result.Lines) then raise EConvertError.Create('線設定の分類数が不正です。');
+        for I:=0 to A.Count-1 do
+        begin
         S:=A.Items[I] as TJSONObject;
         Result.Lines[I].Kind:=Trunc(N(S,'kind',1,0,3));
         Result.Lines[I].Color:=Trunc(N(S,'color',$FFCCCCCC,0,$FFFFFFFF));
         Result.Lines[I].Width:=N(S,'width',2,0.1,50);
         Result.Lines[I].OutlineColor:=Trunc(N(S,'outlineColor',$FF000000,0,$FFFFFFFF));
         Result.Lines[I].OutlineWidth:=N(S,'outlineWidth',0,0,30);
+        end;
       end;
-      A:=O.GetValue<TJSONArray>('offsets');
-      if A.Count>Length(Result.Offsets) then raise EConvertError.Create('位置補正が多すぎます。');
-      for I:=0 to A.Count-1 do
+      if O.GetValue('offsets') is TJSONArray then
       begin
-        S:=A.Items[I] as TJSONObject; ID:=Trunc(N(S,'id',0,0,High(Result.Offsets)));
-        Result.Offsets[ID]:=PointF(N(S,'x',0,-100000,100000),N(S,'y',0,-100000,100000));
+        A:=O.GetValue<TJSONArray>('offsets');
+        if A.Count>Length(Result.Offsets) then raise EConvertError.Create('位置補正が多すぎます。');
+        for I:=0 to A.Count-1 do
+        begin
+          S:=A.Items[I] as TJSONObject; ID:=Trunc(N(S,'id',0,0,High(Result.Offsets)));
+          Result.Offsets[ID]:=PointF(N(S,'x',0,-100000,100000),N(S,'y',0,-100000,100000));
+        end;
+      end;
+      if O.GetValue('labelScales') is TJSONArray then
+      begin
+        A:=O.GetValue<TJSONArray>('labelScales');
+        if A.Count>Length(Result.LabelScales) then raise EConvertError.Create('文字倍率が多すぎます。');
+        for I:=0 to A.Count-1 do
+        begin
+          S:=A.Items[I] as TJSONObject;
+          ID:=Trunc(N(S,'id',0,0,High(Result.LabelScales)));
+          Result.LabelScales[ID]:=N(S,'scale',1,0.1,20);
+        end;
       end;
     except Result.Free; raise; end;
   finally V.Free; end;

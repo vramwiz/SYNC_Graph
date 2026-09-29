@@ -4,13 +4,14 @@
 interface
 uses System.Types, System.UITypes, System.Skia, System.Generics.Collections, GraphModel;
 type
-  TGraphLabel = record ID:Integer; Bounds:TRectF; end;
+  TGraphLabel = record ID:Integer; Role:TTextRole; Bounds:TRectF; end;
   TGraphPainter = class
   public
     Canvas: ISkCanvas;
     Doc: TGraphDocument;
     Labels: TList<TGraphLabel>;
     Opacity: Single;
+    OnlyLabelID, ExcludeLabelID:Integer;
     constructor Create(const ACanvas:ISkCanvas; ADoc:TGraphDocument; AOpacity:Single);
     destructor Destroy; override;
     procedure Line(const A,B:TPointF; const Style:TLineStyle);
@@ -28,6 +29,7 @@ constructor TGraphPainter.Create(const ACanvas:ISkCanvas; ADoc:TGraphDocument; A
 begin
   inherited Create; Canvas:=ACanvas; Doc:=ADoc; Opacity:=AOpacity;
   Labels:=TList<TGraphLabel>.Create;
+  OnlyLabelID:=-1; ExcludeLabelID:=-1;
 end;
 destructor TGraphPainter.Destroy;
 begin Labels.Free; inherited; end;
@@ -42,6 +44,7 @@ end;
 procedure TGraphPainter.Line(const A,B:TPointF; const Style:TLineStyle);
 var P:ISkPaint;
 begin
+  if OnlyLabelID>=0 then Exit;
   if Style.Kind=0 then Exit;
   P:=Paint(Style.Color); P.Style:=TSkPaintStyle.Stroke; P.StrokeWidth:=Style.Width;
   if Style.Kind=2 then P.PathEffect:=TSkPathEffect.MakeDash([8,5],0);
@@ -61,6 +64,7 @@ procedure TGraphPainter.Path(const Points:TArray<TPointF>; Closed:Boolean;
   Fill,Stroke:TAlphaColor; Alpha:Single);
 var B:ISkPathBuilder; P:ISkPaint; I:Integer; Shape:ISkPath; Style:TLineStyle;
 begin
+  if OnlyLabelID>=0 then Exit;
   if Length(Points)=0 then Exit;
   B:=TSkPathBuilder.Create; B.MoveTo(Points[0]);
   for I:=1 to High(Points) do B.LineTo(Points[I]);
@@ -89,6 +93,7 @@ end;
 
 procedure TGraphPainter.Marker(const P:TPointF; Kind:Integer; Color:TAlphaColor; Alpha:Single);
 begin
+  if OnlyLabelID>=0 then Exit;
   if Kind=1 then Canvas.DrawCircle(P.X,P.Y,5,Paint(Color,Alpha))
   else if Kind=2 then Box(RectF(P.X-5,P.Y-5,P.X+5,P.Y+5),Color,Color,Alpha);
 end;
@@ -98,9 +103,12 @@ var S:TTextStyle; Font:ISkFont; Face:ISkTypeface; FS:TSkFontStyle;
   P:ISkPaint; X,Y,W:Single; L:TGraphLabel; Weight:Integer; Slant:TSkFontSlant;
 begin
   if Value='' then Exit;
+  if ((OnlyLabelID>=0) and (ID<>OnlyLabelID)) or
+    ((ExcludeLabelID>=0) and (ID=ExcludeLabelID)) then Exit;
   S:=Doc.TextStyles[Role]; Weight:=400; if S.Bold then Weight:=700;
   Slant:=TSkFontSlant.Upright; if S.Italic then Slant:=TSkFontSlant.Italic;
   FS:=TSkFontStyle.Create(Weight,5,Slant);
+  if (ID>=0) and (ID<Length(Doc.LabelScales)) then S.Size:=S.Size*Doc.LabelScales[ID];
   Face:=TSkTypeface.MakeFromName(S.Font,FS); Font:=TSkFont.Create(Face,S.Size);
   W:=Font.MeasureText(Value); X:=Position.X-W/2; Y:=Position.Y;
   if (ID>=0) and (ID<Length(Doc.Offsets)) then
@@ -119,6 +127,6 @@ begin
   end;
   Canvas.DrawSimpleText(Value,X,Y,Font,Paint(S.Color));
   if ID>=0 then
-  begin L.ID:=ID; L.Bounds:=RectF(X,Y-S.Size,W+X,Y+S.Size*0.25); Labels.Add(L); end;
+  begin L.ID:=ID; L.Role:=Role; L.Bounds:=RectF(X,Y-S.Size,W+X,Y+S.Size*0.25); Labels.Add(L); end;
 end;
 end.

@@ -5,7 +5,8 @@ interface
 uses System.Classes, System.SysUtils, Vcl.Forms, Vcl.ExtCtrls, Vcl.StdCtrls,
   Vcl.ComCtrls, Vcl.Graphics, System.Types, GraphModel, GraphView,
   GraphDataPanel, GraphLayoutPanel, GraphStylePanel, ToolbarIconButton,
-  VectArtDarkPopupMenu, VectArtDarkMenuGroup;
+  VectArtDarkPopupMenu, VectArtDarkMenuGroup, GraphTextToolbar,
+  ColorPickerHueBar, ColorPickerSVArea;
 type
   TGraphEditorForm=class(TForm)
   private
@@ -18,14 +19,33 @@ type
     FData:TGraphDataPanel;
     FLayout:TGraphLayoutPanel;
     FStyles:TGraphStylePanel;
+    FTextToolbar:TGraphTextToolbar;
+    FPickerHue:TColorPickerHueBar;
+    FPickerSV:TColorPickerSVArea;
+    FPickerPanel:TPanel;
+    FPickerCodeLabel:TLabel;
+    FPickerCode:TEdit;
+    FHelp:TLabel;
     FError:TLabel;
     FTimer:TTimer;
     FBusy:Boolean;
+    FViewPending:Boolean;
     FMenu:TVectArtDarkPopupMenu;
     FMenuGroup:TVectArtDarkMenuGroup;
     procedure Changed(Sender:TObject);
     procedure UpdatePreview(Sender:TObject);
     procedure ViewEdited(Sender:TObject);
+    procedure BeginLabelEdit(Sender:TObject);
+    procedure DecorationChanged(Sender:TObject);
+    procedure SelectionChanged(Sender:TObject);
+    procedure TextStyleChanged(Sender:TObject);
+    procedure ResizePicker(Sender:TObject);
+    procedure PickerHueChanged(Sender:TObject);
+    procedure PickerSVChanged(Sender:TObject);
+    procedure PickerCodeExit(Sender:TObject);
+    procedure PickerCodeKeyDown(Sender:TObject; var Key:Word; Shift:TShiftState);
+    procedure SetPickerColor(Color:TColor);
+    procedure UpdatePickerCode;
     procedure DrawIcon(Sender:TObject; Canvas:TCanvas; const Bounds:TRect; const State:TToolbarIconState);
     procedure ActionClick(Sender:TObject);
     procedure Closing(Sender:TObject; var CanClose:Boolean);
@@ -42,11 +62,13 @@ type
   end;
 implementation
 uses Winapi.Windows, Vcl.Controls, System.Math, GraphSettings, GraphRenderer, GraphPainter,
-  GraphAnimation, GraphComposite, DarkEditorTheme;
+  GraphAnimation, GraphComposite, DarkEditorTheme, ColorPickerColorMath,
+  ColorCode;
 
 constructor TGraphEditorForm.Create(AOwner:TComponent);
 const Hints:array[0..3] of string=('全体表示','編集前に戻す','グラフ枠を再配置','文字の位置補正を初期化');
-var Bar:TPanel; B:TToolbarIconButton; I:Integer; Pages:TPageControl;
+var Bar,RightPanel:TPanel; B:TToolbarIconButton;
+  I:Integer; Pages:TPageControl;
   Tab:TTabSheet; L:TLabel;
 begin
   inherited CreateNew(AOwner); ApplyDarkEditor(Self); FBusy:=True;
@@ -60,17 +82,41 @@ begin
     B.Tag:=I; B.Hint:=Hints[I]; B.OnDrawIcon:=DrawIcon; B.OnClick:=ActionClick;
   end;
   L:=TLabel.Create(Self); L.Parent:=Bar; L.AutoSize:=False; L.SetBounds(190,8,1060,40); L.Anchors:=[akLeft,akTop,akRight]; L.WordWrap:=True;
-  L.Caption:='枠・文字をドラッグ / 右下でサイズ変更 / Ctrl+ドラッグ・中ボタンで移動 / ホイールで倍率 / ×で採用';
+  L.Caption:='グラフ・文字の枠内で移動 / 周囲8点でサイズ変更 / Ctrl+ドラッグ・中ボタンで画面移動 / ホイールで倍率 / ×で採用';
+  FHelp:=L;
+  FTextToolbar:=TGraphTextToolbar.Create(Self); FTextToolbar.Parent:=Bar;
+  FTextToolbar.SetBounds(190,6,780,44); FTextToolbar.OnChange:=TextStyleChanged;
   FError:=TLabel.Create(Self); FError.Parent:=Self; FError.Align:=alBottom;
   FError.AutoSize:=False; FError.Height:=28; FError.Font.Color:=$008080FF;
-  Pages:=TPageControl.Create(Self); Pages.Parent:=Self; Pages.Align:=alRight; Pages.Width:=460; Pages.TabHeight:=34;
+  RightPanel:=TPanel.Create(Self); RightPanel.Parent:=Self;
+  RightPanel.Align:=alRight; RightPanel.Width:=460; RightPanel.BevelOuter:=bvNone;
+  FPickerPanel:=TPanel.Create(Self); FPickerPanel.Parent:=RightPanel;
+  FPickerPanel.Align:=alBottom; FPickerPanel.Height:=224;
+  FPickerPanel.BevelOuter:=bvNone; FPickerPanel.Color:=$00303030;
+  L:=TLabel.Create(Self); L.Parent:=FPickerPanel; L.SetBounds(12,8,426,24);
+  L.Caption:='カラー'; L.Font.Color:=$00EEEEEE;
+  FPickerSV:=TColorPickerSVArea.Create(Self); FPickerSV.Parent:=FPickerPanel;
+  FPickerHue:=TColorPickerHueBar.Create(Self); FPickerHue.Parent:=FPickerPanel;
+  FPickerHue.OnChange:=PickerHueChanged; FPickerSV.OnChange:=PickerSVChanged;
+  FPickerCodeLabel:=TLabel.Create(Self); FPickerCodeLabel.Parent:=FPickerPanel;
+  FPickerCodeLabel.Caption:='色コード'; FPickerCodeLabel.Font.Color:=$00EEEEEE;
+  FPickerCode:=TEdit.Create(Self); FPickerCode.Parent:=FPickerPanel;
+  FPickerCode.Color:=$00303030; FPickerCode.Font.Color:=$00EEEEEE;
+  FPickerCode.OnExit:=PickerCodeExit; FPickerCode.OnKeyDown:=PickerCodeKeyDown;
+  FPickerPanel.OnResize:=ResizePicker;
+  ResizePicker(nil); SetPickerColor(clRed);
+  Pages:=TPageControl.Create(Self); Pages.Parent:=RightPanel;
+  Pages.Align:=alClient; Pages.TabHeight:=34;
   Tab:=TTabSheet.Create(Self); Tab.PageControl:=Pages; Tab.Caption:='構造・配置';
   FLayout:=TGraphLayoutPanel.Create(Self); FLayout.Parent:=Tab; FLayout.Align:=alClient; FLayout.OnChange:=Changed;
   Tab:=TTabSheet.Create(Self); Tab.PageControl:=Pages; Tab.Caption:='文字・値';
   FData:=TGraphDataPanel.Create(Self); FData.Parent:=Tab; FData.Align:=alClient; FData.OnChange:=Changed;
   Tab:=TTabSheet.Create(Self); Tab.PageControl:=Pages; Tab.Caption:='装飾';
   FStyles:=TGraphStylePanel.Create(Self); FStyles.Parent:=Tab; FStyles.Align:=alClient; FStyles.OnChange:=Changed;
-  FView:=TGraphView.Create(Self); FView.Parent:=Self; FView.Align:=alClient; FView.OnEdited:=ViewEdited;
+  FView:=TGraphView.Create(Self); FView.Parent:=Self; FView.Align:=alClient;
+  FView.OnEdited:=ViewEdited; FView.OnBeginLabelEdit:=BeginLabelEdit;
+  FView.OnDecorationChanged:=DecorationChanged;
+  FView.OnSelectionChanged:=SelectionChanged;
   FTimer:=TTimer.Create(Self); FTimer.Enabled:=False; FTimer.Interval:=250; FTimer.OnTimer:=UpdatePreview;
   FMenu:=TVectArtDarkPopupMenu.CreatePopup(Self,Self,200,192);
   for I:=0 to 5 do
@@ -92,10 +138,83 @@ begin
   FMenuGroup.Free; FDoc.Free; inherited;
 end;
 
+procedure TGraphEditorForm.ResizePicker(Sender:TObject);
+var Side,Top:Integer;
+begin
+  if (FPickerPanel=nil) or (FPickerSV=nil) or (FPickerHue=nil) then Exit;
+  // 色相部品は縦方向に描画する。SV領域の縦横を同じ長さに保つ。
+  Side:=Max(1,Min(140,Min(FPickerPanel.ClientWidth-58,FPickerPanel.ClientHeight-84)));
+  Top:=36;
+  FPickerSV.SetBounds(12,Top,Side,Side);
+  FPickerHue.SetBounds(20+Side,Top,16,Side);
+  FPickerCodeLabel.SetBounds(12,Top+Side+16,60,24);
+  FPickerCode.SetBounds(76,Top+Side+12,145,28);
+end;
+
+procedure TGraphEditorForm.UpdatePickerCode;
+var C:TColor;
+begin
+  C:=ColorToRGB(FPickerSV.Color);
+  FPickerCode.Text:=Format('#%.2x%.2x%.2x',[GetRValue(C),GetGValue(C),GetBValue(C)]);
+  FPickerCode.Font.Color:=$00EEEEEE;
+end;
+
+procedure TGraphEditorForm.SetPickerColor(Color:TColor);
+begin
+  Color:=ColorToRGB(Color);
+  FPickerHue.Color:=Color;
+  FPickerSV.BaseColor:=HsvToColor(ColorHue(Color),1,1);
+  FPickerSV.Color:=Color;
+  UpdatePickerCode;
+end;
+
+procedure TGraphEditorForm.PickerHueChanged(Sender:TObject);
+var Hue,Saturation,Value:Double;
+begin
+  ColorToHsv(FPickerSV.Color,Hue,Saturation,Value);
+  Hue:=ColorHue(FPickerHue.Color);
+  FPickerSV.BaseColor:=FPickerHue.Color;
+  FPickerSV.Color:=HsvToColor(Hue,Saturation,Value);
+  UpdatePickerCode;
+end;
+
+procedure TGraphEditorForm.PickerSVChanged(Sender:TObject);
+begin
+  UpdatePickerCode;
+end;
+
+procedure TGraphEditorForm.PickerCodeExit(Sender:TObject);
+var Color:TColor;
+begin
+  // カンマ区切りは十進RGB、それ以外は16進としてLibの解析に渡す。
+  if TryParseColorCode(FPickerCode.Text,Color) then SetPickerColor(Color)
+  else FPickerCode.Font.Color:=$008080FF;
+end;
+
+procedure TGraphEditorForm.PickerCodeKeyDown(Sender:TObject; var Key:Word;
+  Shift:TShiftState);
+begin
+  if Key=VK_RETURN then
+  begin
+    Key:=0;
+    PickerCodeExit(Sender);
+  end;
+end;
+
 procedure TGraphEditorForm.Load(const Pixels:TBytes; Width,Height:Integer;
   const Settings:string; const Shared:TGraphShared);
+var LoadWarning:string;
 begin
-  FDoc:=LoadGraph(Settings); FInitialShared:=Shared;
+  LoadWarning:='';
+  try FDoc:=LoadGraph(Settings)
+  except on E:Exception do
+    begin
+      // 壊れた設定でも編集画面を開き、ユーザーが修正できるよう初期値へ復旧する。
+      FDoc:=TGraphDocument.Create;
+      LoadWarning:='設定を初期値で補完しました: '+E.Message;
+    end;
+  end;
+  FInitialShared:=Shared;
   FWidth:=Width; FHeight:=Height;
   if (FWidth<=0) or (FHeight<=0) then begin FWidth:=1920; FHeight:=1080; end;
   if Int64(FWidth)*FHeight>33554432 then raise EArgumentException.Create('編集画像のサイズが大きすぎます。');
@@ -104,17 +223,21 @@ begin
   if (FDoc.Bounds.Width=0) or (FDoc.Bounds.Height=0) then FDoc.ResetBounds(FWidth,FHeight);
   FInitialData:=SaveGraph(FDoc);
   LoadPanels; FData.Load(Shared,FDoc); RenderPreview; FView.Fit;
+  FError.Caption:=LoadWarning;
 end;
 
 procedure TGraphEditorForm.LoadPanels;
 begin
   FBusy:=True;
-  try FLayout.Load(FDoc); FStyles.Load(FDoc); finally FBusy:=False; end;
+  try FLayout.Load(FDoc); FStyles.Load(FDoc); SelectionChanged(nil);
+  finally FBusy:=False; end;
 end;
 
 procedure TGraphEditorForm.Changed(Sender:TObject);
 begin
   if FBusy then Exit;
+  FViewPending:=False;
+  FTimer.Interval:=250;
   if Sender=FStyles then UpdatePreview(nil) else FTimer.Enabled:=True;
 end;
 
@@ -123,6 +246,15 @@ var S:TGraphShared; OldRows,OldCols:Integer; OldKind:TGraphKind; Check:TGraphDoc
 begin
   FTimer.Enabled:=False;
   try
+    if FViewPending then
+    begin
+      FViewPending:=False;
+      RenderPreview;
+      FBusy:=True;
+      try FLayout.Load(FDoc); finally FBusy:=False; end;
+      FError.Caption:='';
+      Exit;
+    end;
     S:=FData.ReadShared; OldRows:=FDoc.Rows; OldCols:=FDoc.Columns; OldKind:=FDoc.Kind;
     FStyles.Apply; FLayout.Apply(FDoc);
     Check:=LoadGraph(SaveGraph(FDoc)); Check.Free;
@@ -138,13 +270,59 @@ begin
   Animation:=Default(TGraphAnimation);
   Output:=RenderGraph(FDoc,FData.ReadShared,Animation,FWidth,FHeight,Labels);
   Image:=Copy(FBackground); CompositeRgba(Image,Output);
-  FView.SetRgba(Image,FWidth,FHeight); FView.Bind(FDoc,Labels);
+  FView.SetRgba(Image,FWidth,FHeight);
+  FView.Bind(FDoc,Labels);
+  FView.CachePreview(FBackground,Output,FWidth,FHeight);
 end;
 
 procedure TGraphEditorForm.ViewEdited(Sender:TObject);
 begin
-  FLayout.Load(FDoc);
-  try RenderPreview; except on E:Exception do FError.Caption:=E.Message; end;
+  // ドラッグ中はViewのキャッシュ画像を追従させ、終了時だけ正確に再描画する。
+  FTimer.Enabled:=False;
+  FViewPending:=True;
+  UpdatePreview(nil);
+  FStyles.RefreshValues;
+end;
+
+procedure TGraphEditorForm.DecorationChanged(Sender:TObject);
+begin
+  // 装飾値のドラッグ中は更新頻度を制限して映像を再描画する。
+  FViewPending:=True;
+  FTimer.Interval:=50;
+  if not FTimer.Enabled then FTimer.Enabled:=True;
+end;
+
+procedure TGraphEditorForm.SelectionChanged(Sender:TObject);
+begin
+  if (FView<>nil) and (FView.SelectedLabelID>=0) and (FDoc<>nil) then
+  begin
+    FTextToolbar.Bind(FDoc,FView.SelectedRole);
+    FHelp.Visible:=False;
+  end
+  else
+  begin
+    FTextToolbar.Visible:=False;
+    FHelp.Visible:=True;
+  end;
+end;
+
+procedure TGraphEditorForm.TextStyleChanged(Sender:TObject);
+begin
+  if FBusy then Exit;
+  FTimer.Enabled:=False;
+  FViewPending:=True;
+  UpdatePreview(nil);
+end;
+
+procedure TGraphEditorForm.BeginLabelEdit(Sender:TObject);
+var Base,TextLayer:TBytes; Labels:TArray<TGraphLabel>; Animation:TGraphAnimation;
+begin
+  Animation:=Default(TGraphAnimation);
+  Base:=RenderGraph(FDoc,FData.ReadShared,Animation,FWidth,FHeight,
+    Labels,-1,FView.ActiveLabelID);
+  TextLayer:=RenderGraph(FDoc,FData.ReadShared,Animation,FWidth,FHeight,
+    Labels,FView.ActiveLabelID);
+  FView.CacheLabelPreview(FBackground,Base,TextLayer,FWidth,FHeight);
 end;
 
 procedure TGraphEditorForm.DrawIcon(Sender:TObject; Canvas:TCanvas;
@@ -169,6 +347,7 @@ begin
   Tag:=TToolbarIconButton(Sender).Tag;
   if Tag=0 then begin FView.Fit; Exit; end;
   FTimer.Enabled:=False;
+  FViewPending:=False;
   case Tag of
     1:begin
       FDoc.Free; FDoc:=LoadGraph(FInitialData);

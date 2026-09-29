@@ -40,17 +40,26 @@
         <DCC_UnitSearchPath>Source\Core;Source\Persistence;Source\Rendering;Source\Editor;Source\Shell;Source\Host;Source\UI;Source\Lib\UI\DarkEditor;Source\Lib\UI\DarkComboBox;Source\Lib\UI\ToolbarIcon;Source\Lib\UI\ColorPicker;Source\Lib\UI\DarkMenu;Source\Lib\UI\ShortcutAction;Source\Lib\UI\HorizontalTrackBar;Source\Lib\UI\VerticalScrollBar;Source\Lib\AviUtl2Canvas\Host;Source\Lib\AviUtl2Canvas\UI;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_DcuOutput>$(MSBuildProjectDirectory)\$(Platform)\$(ProjectName)\$(Config)\DCU</DCC_DcuOutput>
         <GenDll>true</GenDll>
-        <DCC_ExeOutput>.\Win64\Plugin\$(Config)</DCC_ExeOutput>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
         <SanitizedProjectName>SYNC_Graph_Filter</SanitizedProjectName>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_1_Win64)'!=''">
         <Debugger_HostApplication>D:\aviutl2_v2.1.6a\aviutl2.exe</Debugger_HostApplication>
         <Debugger_WorkingDirectory>D:\aviutl2_v2.1.6a</Debugger_WorkingDirectory>
+        <PreBuildEvent><![CDATA[if not exist "C:\ProgramData\aviutl2\Plugin\SYNC_Graph" mkdir "C:\ProgramData\aviutl2\Plugin\SYNC_Graph"]]></PreBuildEvent>
+        <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
+        <PostBuildEvent><![CDATA[copy /Y "$(MSBuildProjectDirectory)\$(PROJECTNAME).dll" "C:\ProgramData\aviutl2\Plugin\SYNC_Graph\$(PROJECTNAME).auf2"&&copy /Y "$(MSBuildProjectDirectory)\Lib\Skia\Win64\sk4d.dll" "C:\ProgramData\aviutl2\Plugin\SYNC_Graph\sk4d.dll"&&del /Q "$(MSBuildProjectDirectory)\$(PROJECTNAME).dll"]]></PostBuildEvent>
+        <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
+        <PostBuildEventExecuteWhen>Always</PostBuildEventExecuteWhen>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_2_Win64)'!=''">
         <Debugger_HostApplication>D:\aviutl2_v2.1.6a\aviutl2.exe</Debugger_HostApplication>
         <Debugger_WorkingDirectory>D:\aviutl2_v2.1.6a</Debugger_WorkingDirectory>
+        <PreBuildEvent><![CDATA[if not exist "C:\ProgramData\aviutl2\Plugin\SYNC_Graph" mkdir "C:\ProgramData\aviutl2\Plugin\SYNC_Graph"]]></PreBuildEvent>
+        <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
+        <PostBuildEvent><![CDATA[copy /Y "$(MSBuildProjectDirectory)\$(PROJECTNAME).dll" "C:\ProgramData\aviutl2\Plugin\SYNC_Graph\$(PROJECTNAME).auf2"&&copy /Y "$(MSBuildProjectDirectory)\Lib\Skia\Win64\sk4d.dll" "C:\ProgramData\aviutl2\Plugin\SYNC_Graph\sk4d.dll"&&del /Q "$(MSBuildProjectDirectory)\$(PROJECTNAME).dll"]]></PostBuildEvent>
+        <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
+        <PostBuildEventExecuteWhen>Always</PostBuildEventExecuteWhen>
     </PropertyGroup>
     <ItemGroup>
         <DelphiCompile Include="$(MainSource)">
@@ -87,10 +96,6 @@
         <ProjectFileVersion>12</ProjectFileVersion>
     </ProjectExtensions>
     <Import Project="$(BDS)\Bin\CodeGear.Delphi.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Delphi.Targets')"/>
-    <Import Project="$(APPDATA)\Embarcadero\$(BDSAPPDATABAoEDIR)\$(PRODUCTVERSION)\UserTools.proj" Condition="Exists('$(APPDATA)\Embarcadero\$(BDSAPPDATABAoEDIR)\$(PRODUCTVERSION)\UserTools.proj')"/>
+    <Import Project="$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj" Condition="Exists('$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj')"/>
     <Import Project="$(MSBuildProjectName).deployproj" Condition="Exists('$(MSBuildProjectName).deployproj')"/>
-    <Target Name="CopyTestPlugin" AfterTargets="Build">
-        <Copy SourceFiles="$(MSBuildProjectDirectory)\Win64\Plugin\$(Config)\SYNC_Graph_Filter.dll" DestinationFiles="$(MSBuildProjectDirectory)\Win64\Plugin\$(Config)\SYNC_Graph_Filter.auf2"/>
-        <Copy SourceFiles="$(BDS)\Redist\win64\sk4d.dll" DestinationFolder="$(MSBuildProjectDirectory)\Win64\Plugin\$(Config)"/>
-    </Target>
 </Project>

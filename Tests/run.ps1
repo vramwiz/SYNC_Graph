@@ -19,7 +19,7 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $line='call "'+$setup+'" && dcc64 -B -Q -U"'+$units+'" -E"'+$out+'" -N0"'+$out+'" "'+$PSScriptRoot+'\PluginSmoke.dpr"'
 & $env:ComSpec /d /s /c $line
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-$plugin=Join-Path $root "Win64\Plugin\$Config\SYNC_Graph_Filter.auf2"
+$plugin='C:\ProgramData\aviutl2\Plugin\SYNC_Graph\SYNC_Graph_Filter.auf2'
 if (-not (Test-Path -LiteralPath $plugin)) { throw '先に対象構成のプラグインをビルドしてください。' }
 & (Join-Path $out 'PluginSmoke.exe') $plugin
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

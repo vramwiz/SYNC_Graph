@@ -5,13 +5,15 @@ interface
 uses System.SysUtils, GraphModel, GraphAnimation, GraphPainter;
 function RenderGraph(Doc:TGraphDocument; const Shared:TGraphShared;
   const Animation:TGraphAnimation; Width,Height:Integer;
-  out Labels:TArray<TGraphLabel>):TBytes;
+  out Labels:TArray<TGraphLabel>; OnlyLabelID:Integer=-1;
+  ExcludeLabelID:Integer=-1):TBytes;
 implementation
 uses System.Types, System.Skia, GraphValues, GraphCartesian, GraphPolar;
 
 function RenderGraph(Doc:TGraphDocument; const Shared:TGraphShared;
   const Animation:TGraphAnimation; Width,Height:Integer;
-  out Labels:TArray<TGraphLabel>):TBytes;
+  out Labels:TArray<TGraphLabel>; OnlyLabelID:Integer;
+  ExcludeLabelID:Integer):TBytes;
 var Surface:ISkSurface; P:TGraphPainter; Values:TGraphValues; B:TRectF;
 begin
   Result:=nil; Labels:=nil;
@@ -24,6 +26,8 @@ begin
   Surface.Canvas.Clear(0);
   P:=TGraphPainter.Create(Surface.Canvas,Doc,Animation.Opacity);
   try
+    P.OnlyLabelID:=OnlyLabelID;
+    P.ExcludeLabelID:=ExcludeLabelID;
     if Doc.Kind in [gkRadar,gkPie] then DrawPolar(P,Shared,Values,Animation)
     else DrawCartesian(P,Shared,Values,Animation);
     B:=Doc.Bounds;
