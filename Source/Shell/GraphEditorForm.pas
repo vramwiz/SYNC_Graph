@@ -1,27 +1,25 @@
 ﻿unit GraphEditorForm;
 
-// 編集画面の組み立てと接続だけを担当する。閉じる操作で検証済みの内容を採用する。
+// 編集画面の組み立てと接続だけを担当する。閉じる操作では不正入力を復旧用に保管し、検証済みの内容を採用する。
 interface
 uses System.Classes, System.SysUtils, System.UITypes, Vcl.Forms, Vcl.ExtCtrls, Vcl.StdCtrls,
   Vcl.Graphics, System.Types, GraphModel, GraphView,
-  GraphDataPanel, GraphLayoutPanel, GraphStylePanel, ToolbarIconButton,
+  GraphDataPanel, GraphLayoutPanel, GraphStylePanel, GraphColorStylePanel, ToolbarIconButton,
   VectArtDarkPopupMenu, VectArtDarkMenuGroup, GraphTextToolbar,
-  ColorPickerPanel, GraphSettingsPane;
+  ColorPickerPanel, GraphSettingsPane, GraphEditState, GraphEditorPreview;
 type
   TGraphEditorForm=class(TForm)
   private
     FDoc:TGraphDocument;
-    FInitialData:string;
-    FInitialShared:TGraphShared;
-    FUndoNameLayout:Integer;
-    FUndoNameOffsets:TArray<TPointF>;
-    FUndoAvailable:Boolean;
-    FBackground:TBytes;
-    FWidth,FHeight:Integer;
+    FState:TGraphEditState;
+    FRecoveryPath:string;
+    FPreview:TGraphEditorPreview;
     FView:TGraphView;
     FData:TGraphDataPanel;
     FLayout:TGraphLayoutPanel;
     FStyles:TGraphStylePanel;
+    FColors:TGraphColorStylePanel;
+    FPickerEditsSeries:Boolean;
     FTextToolbar:TGraphTextToolbar;
     FPicker:TColorPickerPanel;
     FSettingsPane:TGraphSettingsPane;
@@ -34,6 +32,7 @@ type
     FMenu:TVectArtDarkPopupMenu;
     FMenuGroup:TVectArtDarkMenuGroup;
     procedure Changed(Sender:TObject);
+    procedure StyleEditFinished(Sender:TObject);
     procedure UpdatePreview(Sender:TObject);
     procedure ViewEdited(Sender:TObject);
     procedure BeginLabelEdit(Sender:TObject);
@@ -58,12 +57,12 @@ type
     constructor Create(AOwner:TComponent); override;
     destructor Destroy; override;
     procedure Load(const Pixels:TBytes; Width,Height:Integer; const Settings:string; const Shared:TGraphShared);
+    property RecoveryPath:string read FRecoveryPath;
     function Settings:string;
     function Shared:TGraphShared;
   end;
 implementation
-uses Winapi.Windows, Vcl.Controls, System.Math, GraphSettings, GraphRenderer, GraphPainter,
-  GraphAnimation, GraphComposite, DarkEditorTheme;
+uses Winapi.Windows, Vcl.Controls, System.Math, GraphSettings, DarkEditorTheme, GraphEditorRecovery;
 
 constructor TGraphEditorForm.Create(AOwner:TComponent);
 const Hints:array[0..4] of string=('全体表示','編集前に戻す','グラフ枠を再配置',
@@ -71,7 +70,7 @@ const Hints:array[0..4] of string=('全体表示','編集前に戻す','グラ�
 var Bar:TPanel; B:TToolbarIconButton;
   I:Integer; L:TLabel;
 begin
-  inherited CreateNew(AOwner); ApplyDarkEditor(Self); FBusy:=True;
+  inherited CreateNew(AOwner); FState:=TGraphEditState.Create; FPreview:=TGraphEditorPreview.Create; ApplyDarkEditor(Self); FBusy:=True;
   Caption:='SYNC - グラフ'; Position:=poScreenCenter;
   ClientWidth:=1280; ClientHeight:=800; Constraints.MinWidth:=1100; Constraints.MinHeight:=740;
   Font.Name:='Yu Gothic UI'; Font.Size:=10; OnCloseQuery:=Closing;
@@ -96,8 +95,11 @@ begin
   FLayout:=FSettingsPane.LayoutPanel; FLayout.OnChange:=Changed;
   FLayout.OnNameLayoutChange:=NameLayoutChanged;
   FData:=FSettingsPane.DataPanel; FData.OnChange:=Changed;
+  FColors:=FSettingsPane.ColorPanel; FColors.OnChange:=Changed;
+  FColors.OnColorTargetChange:=ColorTargetChanged;
   FStyles:=FSettingsPane.StylePanel; FStyles.OnChange:=Changed;
   FStyles.OnColorTargetChange:=ColorTargetChanged;
+  FStyles.OnEditFinished:=StyleEditFinished;
   OnMouseWheel:=FSettingsPane.RouteWheel;
   FSettingsPane.RefreshLayout;
   FView:=TGraphView.Create(Self); FView.Parent:=Self; FView.Align:=alClient;
@@ -122,7 +124,7 @@ end;
 destructor TGraphEditorForm.Destroy;
 begin
   if FTimer<>nil then FTimer.Enabled:=False;
-  FMenuGroup.Free; FDoc.Free; inherited;
+  FMenuGroup.Free; FDoc.Free; FState.Free; FPreview.Free; inherited;
 end;
 
 procedure TGraphEditorForm.ChangeScale(M,D:Integer; isDpiChange:Boolean);
@@ -148,6 +150,9 @@ begin
   if FPickerEditsText then
     FTextToolbar.SetSelectedColor($FF000000 or (Cardinal(GetRValue(C)) shl 16) or
       (Cardinal(GetGValue(C)) shl 8) or GetBValue(C))
+  else if FPickerEditsSeries then
+    FColors.SetSelectedColor($FF000000 or (Cardinal(GetRValue(C)) shl 16) or
+      (Cardinal(GetGValue(C)) shl 8) or GetBValue(C))
   else
     FStyles.SetSelectedColor($FF000000 or (Cardinal(GetRValue(C)) shl 16) or
       (Cardinal(GetGValue(C)) shl 8) or GetBValue(C));
@@ -157,7 +162,8 @@ procedure TGraphEditorForm.ColorTargetChanged(Sender:TObject);
 var C:TAlphaColor;
 begin
   FPickerEditsText:=False;
-  C:=FStyles.SelectedColor;
+  FPickerEditsSeries:=Sender=FColors;
+  if FPickerEditsSeries then C:=FColors.SelectedColor else C:=FStyles.SelectedColor;
   FPicker.SelectedColor:=RGB((C shr 16) and $FF,(C shr 8) and $FF,C and $FF);
 end;
 
@@ -182,14 +188,9 @@ begin
       LoadWarning:='設定を初期値で補完しました: '+E.Message;
     end;
   end;
-  FInitialShared:=Shared;
-  FWidth:=Width; FHeight:=Height;
-  if (FWidth<=0) or (FHeight<=0) then begin FWidth:=1920; FHeight:=1080; end;
-  if Int64(FWidth)*FHeight>33554432 then raise EArgumentException.Create('編集画像のサイズが大きすぎます。');
-  FBackground:=Copy(Pixels);
-  if Length(FBackground)<>Int64(FWidth)*FHeight*4 then SetLength(FBackground,NativeInt(FWidth)*FHeight*4);
-  if (FDoc.Bounds.Width=0) or (FDoc.Bounds.Height=0) then FDoc.ResetBounds(FWidth,FHeight);
-  FInitialData:=SaveGraph(FDoc);
+  FPreview.Initialize(Pixels,Width,Height);
+  if (FDoc.Bounds.Width=0) or (FDoc.Bounds.Height=0) then FDoc.ResetBounds(FPreview.Width,FPreview.Height);
+  FState.Initialize(FDoc,Shared); FRecoveryPath:='';
   LoadPanels; FData.Load(Shared,FDoc); FSettingsPane.RefreshLayout;
   RenderPreview; FView.Fit;
   FError.Caption:=LoadWarning;
@@ -198,7 +199,7 @@ end;
 procedure TGraphEditorForm.LoadPanels;
 begin
   FBusy:=True;
-  try FLayout.Load(FDoc); FStyles.Load(FDoc); SelectionChanged(nil);
+  try FLayout.Load(FDoc); FStyles.Load(FDoc); FColors.Load(FDoc); SelectionChanged(nil);
   finally FBusy:=False; end;
 end;
 
@@ -206,8 +207,20 @@ procedure TGraphEditorForm.Changed(Sender:TObject);
 begin
   if FBusy then Exit;
   FViewPending:=False;
+  if (Sender=FStyles) and FStyles.WidthChanging then
+  begin
+    // 連続操作はタイマーでまとめる。既存の待機中入力も同時に確定する。
+    FTimer.Interval:=60;
+    if not FTimer.Enabled then FTimer.Enabled:=True;
+    Exit;
+  end;
   FTimer.Interval:=250;
-  if Sender=FStyles then UpdatePreview(nil) else FTimer.Enabled:=True;
+  if (Sender=FStyles) or (Sender=FColors) then UpdatePreview(nil) else FTimer.Enabled:=True;
+end;
+
+procedure TGraphEditorForm.StyleEditFinished(Sender:TObject);
+begin
+  if not FBusy then UpdatePreview(nil);
 end;
 
 procedure TGraphEditorForm.UpdatePreview(Sender:TObject);
@@ -233,20 +246,15 @@ begin
         FDoc.Offsets[I]:=PointF(0,0);
     Check:=LoadGraph(SaveGraph(FDoc)); Check.Free;
     if (OldRows<>FDoc.Rows) or (OldCols<>FDoc.Columns) or (OldKind<>FDoc.Kind) then
-    begin FData.Load(S,FDoc); FStyles.Load(FDoc); FSettingsPane.RefreshLayout; end;
+    begin FData.Load(S,FDoc); FStyles.Load(FDoc); FColors.Load(FDoc); FSettingsPane.RefreshLayout; end;
     RenderPreview; FError.Caption:='';
   except on E:Exception do FError.Caption:=E.Message; end;
 end;
 
 procedure TGraphEditorForm.RenderPreview;
-var Output,Image:TBytes; Labels:TArray<TGraphLabel>; Animation:TGraphAnimation;
 begin
-  Animation:=Default(TGraphAnimation);
-  Output:=RenderGraph(FDoc,FData.ReadShared,Animation,FWidth,FHeight,Labels);
-  Image:=Copy(FBackground); CompositeRgba(Image,Output);
-  FView.SetRgba(Image,FWidth,FHeight);
-  FView.Bind(FDoc,Labels);
-  FView.CachePreview(FBackground,Output,FWidth,FHeight);
+  FPreview.Draw(FDoc,FData.ReadShared,FView);
+  FState.MarkValid(FDoc,FData.ReadShared);
 end;
 
 procedure TGraphEditorForm.ViewEdited(Sender:TObject);
@@ -292,25 +300,13 @@ begin
 end;
 
 procedure TGraphEditorForm.NameLayoutChanged(Sender:TObject);
-var I:Integer;
 begin
-  if FBusy or (FDoc=nil) then Exit;
-  FUndoNameLayout:=FDoc.NameLayout;
-  SetLength(FUndoNameOffsets,FDoc.Rows);
-  for I:=0 to High(FUndoNameOffsets) do
-    FUndoNameOffsets[I]:=FDoc.Offsets[I+2];
-  FUndoAvailable:=True;
+  if not FBusy and (FDoc<>nil) then FState.CaptureNameLayout(FDoc);
 end;
 
 procedure TGraphEditorForm.BeginLabelEdit(Sender:TObject);
-var Base,TextLayer:TBytes; Labels:TArray<TGraphLabel>; Animation:TGraphAnimation;
 begin
-  Animation:=Default(TGraphAnimation);
-  Base:=RenderGraph(FDoc,FData.ReadShared,Animation,FWidth,FHeight,
-    Labels,-1,FView.ActiveLabelID);
-  TextLayer:=RenderGraph(FDoc,FData.ReadShared,Animation,FWidth,FHeight,
-    Labels,FView.ActiveLabelID);
-  FView.CacheLabelPreview(FBackground,Base,TextLayer,FWidth,FHeight);
+  FPreview.PrepareLabel(FDoc,FData.ReadShared,FView);
 end;
 
 procedure TGraphEditorForm.DrawIcon(Sender:TObject; Canvas:TCanvas;
@@ -331,37 +327,52 @@ begin
 end;
 
 procedure TGraphEditorForm.ActionClick(Sender:TObject);
-var Tag,I:Integer;
+var Tag:Integer;
 begin
   Tag:=TToolbarIconButton(Sender).Tag;
   if Tag=0 then begin FView.Fit; Exit; end;
-  if (Tag=4) and not FUndoAvailable then Exit;
+  if (Tag=4) and not FState.UndoAvailable then Exit;
   FTimer.Enabled:=False;
   FViewPending:=False;
   case Tag of
     1:begin
-      FDoc.Free; FDoc:=LoadGraph(FInitialData);
-      FData.ClearCache; FData.Load(FInitialShared,FDoc);
-      FUndoAvailable:=False;
+      FDoc.Free; FDoc:=FState.RestoreInitial;
+      FData.ClearCache; FData.Load(FState.InitialShared,FDoc);
     end;
-    2:FDoc.ResetBounds(FWidth,FHeight);
+    2:FDoc.ResetBounds(FPreview.Width,FPreview.Height);
     3:FDoc.ResetOffsets;
-    4:begin
-      FDoc.NameLayout:=FUndoNameLayout;
-      for I:=0 to Min(High(FUndoNameOffsets),FDoc.Rows-1) do
-        FDoc.Offsets[I+2]:=FUndoNameOffsets[I];
-      FUndoAvailable:=False;
-    end;
+    4:FState.UndoNameLayout(FDoc);
   end;
   LoadPanels; FSettingsPane.RefreshLayout; RenderPreview; FError.Caption:='';
 end;
 
 procedure TGraphEditorForm.Closing(Sender:TObject; var CanClose:Boolean);
-begin UpdatePreview(nil); CanClose:=FError.Caption=''; end;
+var Inputs,Error,StorageError:string; Current:TGraphShared;
+begin
+  CanClose:=True; StorageError:='';
+  // 検証時の構造更新で入力欄が再生成される前に、生入力を確保する。
+  try Inputs:=CaptureEditorInputs(FSettingsPane);
+  except on E:Exception do begin Inputs:='[]'; StorageError:=E.Message; end; end;
+  Current:=FData.ReadShared;
+  UpdatePreview(nil); FTimer.Enabled:=False;
+  FState.ClosedWithError:=FError.Caption<>'';
+  if not FState.ClosedWithError then Exit;
+  Error:=FError.Caption;
+  try
+    FRecoveryPath:=SaveEditorRecovery(Inputs,Error,SaveGraph(FDoc),FState.ValidSettings,Current,FState.ValidShared);
+  except on E:Exception do StorageError:=E.Message; end;
+  if StorageError<>'' then
+    MessageBox(Handle,PChar('復旧用データを完全には保管できませんでした: '+StorageError+#13#10+
+      '画面は最後の有効な設定で閉じます。'), 'SYNC - グラフ',MB_OK or MB_ICONWARNING);
+end;
 function TGraphEditorForm.Settings:string;
-begin Result:=SaveGraph(FDoc); end;
+begin
+  Result:=FState.AcceptedSettings(FDoc);
+end;
 function TGraphEditorForm.Shared:TGraphShared;
-begin Result:=FData.ReadShared; end;
+begin
+  Result:=FState.AcceptedShared(FData.ReadShared);
+end;
 procedure TGraphEditorForm.FormatMenu(Sender:TObject; MousePos:TPoint; var Handled:Boolean);
 begin
   Handled:=True;

@@ -5,7 +5,7 @@ interface
 
 uses System.Classes, System.Types, Vcl.ExtCtrls, Vcl.Controls,
   ColorPickerPanel, VerticalScrollBarControl, GraphLayoutPanel,
-  GraphDataPanel, GraphStylePanel;
+  GraphDataPanel, GraphStylePanel, GraphColorStylePanel;
 
 type
   TGraphSettingsPane=class(TPanel)
@@ -16,6 +16,7 @@ type
     FLayout:TGraphLayoutPanel;
     FData:TGraphDataPanel;
     FStyles:TGraphStylePanel;
+    FColors:TGraphColorStylePanel;
     procedure Scrolled(Sender:TObject);
     procedure ViewportResized(Sender:TObject);
   public
@@ -26,6 +27,7 @@ type
     property Picker:TColorPickerPanel read FPicker;
     property LayoutPanel:TGraphLayoutPanel read FLayout;
     property DataPanel:TGraphDataPanel read FData;
+    property ColorPanel:TGraphColorStylePanel read FColors;
     property StylePanel:TGraphStylePanel read FStyles;
   end;
 
@@ -67,6 +69,7 @@ begin
   FScroll.OnChange:=Scrolled;
   FLayout:=TGraphLayoutPanel.Create(FContent); FLayout.Parent:=FContent;
   FData:=TGraphDataPanel.Create(FContent); FData.Parent:=FContent;
+  FColors:=TGraphColorStylePanel.Create(FContent);
   FStyles:=TGraphStylePanel.Create(FContent); FStyles.Parent:=FContent;
   RefreshLayout;
 end;
@@ -78,16 +81,17 @@ procedure TGraphSettingsPane.RefreshLayout;
 var W,H,ViewHeight:Integer;
 begin
   if (FContent=nil) or (FScroll=nil) or
-    (FLayout=nil) or (FData=nil) or (FStyles=nil) then Exit;
+    (FLayout=nil) or (FData=nil) or (FStyles=nil) or (FColors=nil) then Exit;
   W:=Max(1,FViewport.ClientWidth-FScroll.Width);
-  H:=FLayout.Height+FData.Height+FStyles.Height+24;
+  H:=FLayout.Height+FData.Height+FColors.Height+FStyles.Height+32;
   ViewHeight:=Max(1,FViewport.ClientHeight);
   FScroll.LargeChange:=Max(48,ViewHeight-48);
   FScroll.SetRange(Max(0,H-ViewHeight),ViewHeight);
   FContent.SetBounds(0,-FScroll.Position,W,H);
   FLayout.SetBounds(0,0,W,FLayout.Height);
   FData.SetBounds(0,FLayout.Height+8,W,FData.Height);
-  FStyles.SetBounds(0,FLayout.Height+FData.Height+16,W,FStyles.Height);
+  FColors.SetBounds(0,FLayout.Height+FData.Height+16,W,FColors.Height);
+  FStyles.SetBounds(0,FColors.Top+FColors.Height+8,W,FStyles.Height);
   FPicker.RefreshLayout;
 end;
 

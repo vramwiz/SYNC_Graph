@@ -30,7 +30,7 @@ type
     property OnColorTargetChange:TNotifyEvent read FOnColorTargetChange write FOnColorTargetChange;
   end;
 implementation
-uses System.SysUtils, Vcl.Forms, Vcl.Controls, Winapi.Windows, System.Skia;
+uses System.SysUtils, Vcl.Forms, Vcl.Controls, Winapi.Windows, System.Skia, GraphFonts;
 
 constructor TGraphTextToolbar.Create(AOwner:TComponent);
 const Hints:array[0..4] of string=('太字','斜体','文字色','縁取り色','影色');
@@ -45,13 +45,13 @@ begin
   FFont:=TDarkComboBox.Create(Self); FFont.Parent:=Self;
   FFont.SetBounds(72,4,230,34); FFont.OnChange:=FontChanged;
   FFont.Font.Color:=$00EEEEEE;
-  // GDIの一覧にはSkiaが解決できないフォントも含まれる。
+  // 描画と同じ実書体の解決を使う。言語別名の一致だけでは候補を除外しない。
   for Name in Screen.Fonts do
   begin
     if (Name='') or (Name[1]='@') then Continue;
     try
-      Face:=TSkTypeface.MakeFromName(Name,TSkFontStyle.Normal);
-      if (Face<>nil) and SameText(Face.FamilyName,Name) then FFont.Items.Add(Name);
+      Face:=ResolveGraphTypeface(Name,TSkFontStyle.Normal);
+      if Face<>nil then FFont.Items.Add(Name);
     except
       // 列挙できても描画エンジン側で開けないフォントは候補に含めない。
     end;
@@ -82,7 +82,7 @@ begin
     FRoleLabel.Caption:=Names[FRole];
     I:=FFont.Items.IndexOf(S.Font);
     FFont.ItemIndex:=I;
-    if I<0 then FFont.TextHint:=S.Font+'（描画不可）'
+    if I<0 then FFont.TextHint:=S.Font+'（一覧外）'
     else FFont.TextHint:='';
     FButtons[0].Selected:=S.Bold;
     FButtons[1].Selected:=S.Italic;

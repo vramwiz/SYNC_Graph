@@ -11,8 +11,8 @@ uses System.Types, System.Math, System.SysUtils;
 procedure DrawPolar(P:TGraphPainter; const Shared:TGraphShared;
   const Values:TGraphValues; const Animation:TGraphAnimation);
 var D:TGraphDocument; Center:TPointF; Radius,Angle,Start,Sweep,Total,F,T:Double;
-  Shape,CellAlpha,PairAlpha:Single; AllStarted:Boolean;
-  R,C,I,Steps:Integer; Points:TArray<TPointF>; S:TGraphScale; Style:TSeriesStyle; A,Q:TPointF;
+  Shape,CellAlpha,PairAlpha,FillAlpha:Single; AllStarted:Boolean;
+  R,C,I,Steps,Pass:Integer; Points:TArray<TPointF>; S:TGraphScale; Style:TSeriesStyle; Edge:TLineStyle; A,Q:TPointF;
   function Polar(Degrees,Distance:Double):TPointF;
   begin Result:=PointF(Center.X+Cos(DegToRad(Degrees))*Distance,Center.Y+Sin(DegToRad(Degrees))*Distance); end;
 begin
@@ -38,9 +38,15 @@ begin
       F:=1.15; if D.NameLayout=1 then F:=0.85 else if D.NameLayout=2 then F:=1.3;
       P.Text(ElementName(Shared.Names,R),trName,2+R,Polar(Angle,Radius*F));
     end;
+    // 面、輪郭、値の順に全データを描き、後の面が先の輪郭を覆うのを防ぐ。
+    for Pass:=0 to 2 do
     for C:=0 to D.Columns-1 do
     begin
       SetLength(Points,D.Rows); Style:=D.Series[C];
+      Edge:=D.Lines[4]; Edge.Color:=Style.FillColor;
+      // 手前の面だけを自動透過し、既存透明度・進行フェードは別に乗算する。
+      // 輪郭を透過補正しないことで、重なっても各データの形を識別できる。
+      FillAlpha:=1; if C>0 then FillAlpha:=0.4;
       AllStarted:=True;
       for R:=0 to D.Rows-1 do
       begin
@@ -55,19 +61,19 @@ begin
       begin
         PairAlpha:=Min(Animation.CellOpacity(R-1,C,D.Rows,D.Columns),
           Animation.CellOpacity(R,C,D.Rows,D.Columns))*(1-Style.Transparency/100);
-        if PairAlpha>0 then
-          P.Path([Center,Points[R-1],Points[R]],True,Style.FillColor,0,PairAlpha);
-        P.Path([Points[R-1],Points[R]],False,0,Style.LineColor,
-          PairAlpha);
+        if (Pass=0) and (PairAlpha>0) then
+          P.Path([Center,Points[R-1],Points[R]],True,Style.FillColor,0,PairAlpha*FillAlpha);
+        if Pass=1 then P.Line(Points[R-1],Points[R],Edge,PairAlpha);
       end;
       if AllStarted then
       begin
         PairAlpha:=Min(Animation.CellOpacity(D.Rows-1,C,D.Rows,D.Columns),
           Animation.CellOpacity(0,C,D.Rows,D.Columns))*(1-Style.Transparency/100);
-        P.Path([Center,Points[High(Points)],Points[0]],True,Style.FillColor,0,PairAlpha);
-        P.Path([Points[High(Points)],Points[0]],False,0,Style.LineColor,
-          PairAlpha);
+        if Pass=0 then
+          P.Path([Center,Points[High(Points)],Points[0]],True,Style.FillColor,0,PairAlpha*FillAlpha);
+        if Pass=1 then P.Line(Points[High(Points)],Points[0],Edge,PairAlpha);
       end;
+      if Pass=2 then
       for R:=0 to D.Rows-1 do
       begin
         Shape:=Animation.ShapeProgress(R,C,D.Rows,D.Columns);
@@ -97,7 +103,7 @@ begin
       begin
         SetLength(Points,Steps+2); Points[0]:=Center;
         for I:=0 to Steps do Points[I+1]:=Polar(Start+Sweep*Shape*I/Steps,Radius);
-        P.Path(Points,True,Style.FillColor,Style.LineColor,
+        P.Path(Points,True,Style.FillColor,D.Lines[5].Color,
           (1-Style.Transparency/100)*CellAlpha);
         Angle:=Start+Sweep*Shape/2; T:=0.65;
         if D.NameLayout<>0 then T:=1.18;

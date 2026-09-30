@@ -2,19 +2,21 @@
 
 // 構造、向き、目盛りを編集する。グラフ枠の位置と寸法はキャンバスで操作する。
 interface
-uses System.Classes, Vcl.ExtCtrls, Vcl.StdCtrls, DarkComboBox,
+uses System.Classes, Vcl.ExtCtrls, Vcl.StdCtrls, Vcl.ComCtrls, DarkComboBox,
   GraphNumberEdit, GraphModel;
 type
   TGraphLayoutPanel=class(TPanel)
   private
     FKind,FNameLayout:TDarkComboBox;
-    FRows,FColumns,FRotation:TGraphNumberEdit;
+    FRows,FColumns:TEdit;
+    FRotation:TGraphNumberEdit;
     FNumbers:array[0..2] of TGraphNumberEdit;
     FHorizontal,FStacked:TCheckBox;
     FValueFormat:TEdit;
     FBusy:Boolean;
     FOnChange,FOnNameLayoutChange:TNotifyEvent;
     procedure Changed(Sender:TObject);
+    procedure CountClicked(Sender:TObject; Button:TUDBtnType);
     procedure NameLayoutChanged(Sender:TObject);
   public
     constructor Create(AOwner:TComponent); override;
@@ -40,6 +42,20 @@ var L:TLabel; I:Integer;
     Result.SetBounds(X,Y,W,30); Result.Minimum:=MinValue; Result.Maximum:=MaxValue;
     Result.AllowEmpty:=Empty; Result.OnChange:=Changed;
   end;
+  function CountAt(X,W,MaxValue:Integer):TEdit;
+  var Spin:TUpDown;
+  begin
+    Result:=TEdit.Create(Self); Result.Parent:=Self;
+    Result.SetBounds(X,80,W-18,30); Result.Text:='3';
+    Result.StyleElements:=[]; Result.Color:=$00303030; Result.Font.Color:=$00EEEEEE;
+    Spin:=TUpDown.Create(Self); Spin.Parent:=Self;
+    Spin.Min:=1; Spin.Max:=MaxValue; Spin.Thousands:=False;
+    // Associateは不正な生入力をフォーカス移動で補正するため使わず、矢印操作だけを接続する。
+    // 手入力の検証・保管はフォームの終了処理に委ね、入力途中の文字を失わない。
+    Spin.Position:=3; Spin.Tag:=X; Spin.OnClick:=CountClicked;
+    Spin.SetBounds(X+W-18,80,18,30);
+    Result.OnChange:=Changed;
+  end;
 begin
   inherited;
   if AOwner is TWinControl then Parent:=TWinControl(AOwner);
@@ -49,8 +65,8 @@ begin
   FKind.Font.Assign(Font); FKind.Items.Add('未設定'); FKind.Items.Add('N角形');
   FKind.Items.Add('折れ線'); FKind.Items.Add('棒'); FKind.Items.Add('円');
   FKind.OnChange:=Changed;
-  LabelAt('要素数',12,86,55); FRows:=NumberAt(68,80,60,1,MaxGraphRows);
-  LabelAt('データ数',146,86,70); FColumns:=NumberAt(216,80,68,1,MaxGraphColumns);
+  LabelAt('要素数',12,86,55); FRows:=CountAt(68,70,MaxGraphRows);
+  LabelAt('データ数',146,86,70); FColumns:=CountAt(216,68,MaxGraphColumns);
   FHorizontal:=TCheckBox.Create(Self); FHorizontal.Parent:=Self;
   FHorizontal.Caption:='横向き'; FHorizontal.SetBounds(12,146,120,28);
   FHorizontal.OnClick:=Changed;
@@ -75,6 +91,16 @@ begin
   FValueFormat.Font.Color:=$00EEEEEE; FValueFormat.OnChange:=Changed;
 end;
 
+procedure TGraphLayoutPanel.CountClicked(Sender:TObject; Button:TUDBtnType);
+var Spin:TUpDown; Edit:TEdit; Value:Integer;
+begin
+  Spin:=TUpDown(Sender);
+  if Spin.Tag=68 then Edit:=FRows else Edit:=FColumns;
+  if not TryStrToInt(Edit.Text,Value) then Value:=Spin.Position;
+  if Button=btNext then Inc(Value) else Dec(Value);
+  Value:=EnsureRange(Value,Spin.Min,Spin.Max);
+  Spin.Position:=Value; Edit.Text:=IntToStr(Value);
+end;
 procedure TGraphLayoutPanel.Changed(Sender:TObject);
 begin if not FBusy and Assigned(FOnChange) then FOnChange(Self); end;
 

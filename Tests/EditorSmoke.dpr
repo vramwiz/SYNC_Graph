@@ -1,13 +1,13 @@
 ﻿program EditorSmoke;
 {$APPTYPE CONSOLE}
 // フォーム生成とモデル読み込みのスモークテスト。実ホスト操作とは区別する。
-uses System.Classes, System.SysUtils, System.Types, Vcl.Forms, GraphEditorForm, GraphModel,
+uses System.JSON, System.IOUtils, System.Classes, System.SysUtils, System.Types, Vcl.Forms, GraphEditorForm, GraphModel,
   GraphSettings, GraphView, GraphPainter, GraphTextToolbar, ToolbarIconButton,
   DarkComboBox, ColorPickerHueBar, ColorPickerSVArea, ColorPickerPanel,
   VerticalScrollBarControl, GraphNumberEdit, GraphLayoutPanel, GraphDataPanel,
-  GraphStylePanel,
+  GraphStylePanel, GraphColorStylePanel, GraphSettingsPane,
   HorizontalTrackBarControl,
-  Vcl.StdCtrls, Vcl.Controls, Winapi.Windows,
+  Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.Controls, Winapi.Windows,
   Winapi.Messages, GraphHostSettings, AviUtl2FilterTypes, Vcl.Graphics, Vcl.ComCtrls;
 // 実ホストと同じエイリアス形式を返し、複数行の初期値で終了できるか確認する。
 type TNumberProbe=class(TGraphNumberEdit)
@@ -80,6 +80,139 @@ begin
     if Result<>nil then Exit;
   end;
 end;
+procedure CheckCountInputs(Owner:TComponent);
+var Panel:TGraphLayoutPanel; Doc:TGraphDocument; I:Integer; Spin:TUpDown;
+begin
+  Doc:=TGraphDocument.Create; Panel:=TGraphLayoutPanel.Create(Owner);
+  try
+    Panel.Load(Doc);
+    for I:=0 to Panel.ComponentCount-1 do
+      if Panel.Components[I] is TUpDown then
+      begin
+        Spin:=TUpDown(Panel.Components[I]); Spin.OnClick(Spin,btNext);
+        Panel.Apply(Doc);
+        if ((Spin.Tag=68) and (Doc.Rows<>4)) or ((Spin.Tag=216) and (Doc.Columns<>4)) then
+          raise Exception.Create('Count up arrow did not increment');
+        Spin.OnClick(Spin,btPrev); Panel.Apply(Doc);
+        if (Doc.Rows<>3) or (Doc.Columns<>3) then raise Exception.Create('Count down arrow did not decrement');
+      end;
+    Writeln('PASS element/data count up/down arrows');
+  finally Panel.Free; Doc.Free; end;
+end;
+procedure CheckInvalidClose;
+var Form:TGraphEditorForm; Doc,Accepted:TGraphDocument; Data:TGraphDataPanel;
+  Layout:TGraphLayoutPanel; I:Integer; O:TJSONObject; Path,Text:string;
+begin
+  Doc:=TGraphDocument.Create; Form:=TGraphEditorForm.Create(nil); Path:='';
+  try
+    Doc.Kind:=gkBar; Doc.ResetBounds(640,480);
+    Form.Load(nil,640,480,SaveGraph(Doc),DefaultShared);
+    Data:=FindData(Form); Layout:=FindLayout(Form);
+    for I:=0 to Data.ComponentCount-1 do
+      if (Data.Components[I] is TEdit) and (TEdit(Data.Components[I]).Left=138) then
+      begin TEdit(Data.Components[I]).Text:='invalid-value'; Break; end;
+    for I:=0 to Layout.ComponentCount-1 do
+      if (Layout.Components[I] is TEdit) and (TEdit(Layout.Components[I]).Top=80) then
+      begin TEdit(Layout.Components[I]).Text:='invalid-count'; Break; end;
+    PostMessage(Form.Handle,WM_SYSCOMMAND,SC_CLOSE,0); Form.ShowModal;
+    Path:=Form.RecoveryPath;
+    if (Path='') or not TFile.Exists(Path) then raise Exception.Create('Invalid input recovery was not saved');
+    Text:=TFile.ReadAllText(Path,TEncoding.UTF8);
+    O:=TJSONObject.ParseJSONValue(Text) as TJSONObject;
+    try
+      if (Pos('invalid-value',O.GetValue<TJSONArray>('inputs').ToJSON)=0) or
+        (Pos('invalid-count',O.GetValue<TJSONArray>('inputs').ToJSON)=0) or
+        (O.GetValue<string>('error')='') then
+        raise Exception.Create('Recovery did not preserve raw inputs and validation error');
+    finally O.Free; end;
+    Accepted:=LoadGraph(Form.Settings);
+    try
+      if (Accepted.Kind<>gkBar) or (Accepted.Rows<>3) or
+        (Form.Shared.Values<>DefaultShared.Values) then
+        raise Exception.Create('Close did not return the last valid settings');
+    finally Accepted.Free; end;
+    Writeln('PASS invalid inputs saved to recovery and modal close allowed');
+  finally Form.Free; Doc.Free; if Path<>'' then TFile.Delete(Path); end;
+end;
+procedure CheckLineRows(Owner:TComponent);
+var Panel:TGraphStylePanel; Doc:TGraphDocument; K:TGraphKind;
+  I,Index:Integer; Swatch:TPanel; Slider:THorizontalTrackBarControl; Kind:TComboBox;
+begin
+  Doc:=TGraphDocument.Create; Panel:=TGraphStylePanel.Create(Owner);
+  try
+    for K:=gkRadar to gkPie do
+    begin
+      Doc.Kind:=K; Panel.Load(Doc);
+      if K=gkPie then Index:=5 else Index:=4;
+      Swatch:=nil; Slider:=nil; Kind:=nil;
+      for I:=0 to Panel.ComponentCount-1 do
+      begin
+        if (Panel.Components[I] is TPanel) and (TPanel(Panel.Components[I]).Tag=Index) then
+          Swatch:=TPanel(Panel.Components[I]);
+        if (Panel.Components[I] is THorizontalTrackBarControl) and
+          (THorizontalTrackBarControl(Panel.Components[I]).Tag=Index) then
+          Slider:=THorizontalTrackBarControl(Panel.Components[I]);
+        if (Panel.Components[I] is TComboBox) and (TComboBox(Panel.Components[I]).Tag=Index) then
+          Kind:=TComboBox(Panel.Components[I]);
+      end;
+      if (Swatch=nil) or (Slider=nil) or (Kind=nil) then raise Exception.Create('Data line row is missing');
+      if not Slider.Visible or (Swatch.Top<>Slider.Top) or (Slider.Top<>Kind.Top) then
+        raise Exception.Create('Data line tools are not in one row');
+      if (Swatch.Visible<>(not (K in [gkLine,gkRadar]))) or (Kind.Visible<>(K<>gkLine)) then
+        raise Exception.Create('Line element color/kind was duplicated');
+      if K<>gkLine then
+      begin
+        Swatch.OnClick(Swatch); Panel.SetSelectedColor($FF224466);
+        Kind.ItemIndex:=3; Kind.OnChange(Kind);
+        if (Doc.Lines[Index].Color<>$FF224466) or (Doc.Lines[Index].Kind<>3) then
+          raise Exception.Create('Data line color or kind was not applied');
+      end;
+      Slider.Position:=85;
+      if Abs(Doc.Lines[Index].Width-8.5)>0.001 then raise Exception.Create('Data line width was not applied');
+    end;
+    Writeln('PASS line rows and graph-specific line controls');
+  finally Panel.Free; Doc.Free; end;
+end;
+procedure CheckColorStyles(Owner:TComponent);
+var Panel:TGraphColorStylePanel; Doc,Restored:TGraphDocument;
+  K:TGraphKind; I,Count:Integer; Control:TComponent; Swatch:TPanel; Combo:TDarkComboBox;
+begin
+  Doc:=TGraphDocument.Create; Panel:=TGraphColorStylePanel.Create(Owner);
+  try
+    Doc.ResizeStructure(2,9);
+    for K:=gkRadar to gkPie do
+    begin
+      Doc.Kind:=K; Panel.Load(Doc); Count:=0; Swatch:=nil;
+      for I:=0 to Panel.ComponentCount-1 do
+      begin
+        Control:=Panel.Components[I];
+        if Control is TPanel then
+        begin Inc(Count); Swatch:=TPanel(Control); end;
+        if Control is TDarkComboBox then
+          if TDarkComboBox(Control).Visible<>(K=gkLine) then
+            raise Exception.Create('Line-only style selector visibility is wrong');
+      end;
+      if Count<>Doc.SeriesCount then raise Exception.Create('Swatch count is wrong');
+      Swatch.OnClick(Swatch); Panel.SetSelectedColor($FF123456);
+      if Panel.SelectedColor<>$FF123456 then raise Exception.Create('Selected swatch color is wrong');
+      if K=gkLine then
+        for I:=0 to Panel.ComponentCount-1 do
+          if Panel.Components[I] is TDarkComboBox then
+          begin
+            Combo:=TDarkComboBox(Panel.Components[I]); Combo.ItemIndex:=2; Combo.OnChange(Combo);
+          end;
+    end;
+    Restored:=LoadGraph(SaveGraph(Doc));
+    try
+      if (Restored.Series[1].Marker<>2) or (Restored.Series[1].LineKind<>3) then
+        raise Exception.Create('Selected series style was not saved');
+    finally Restored.Free; end;
+    Doc.Kind:=gkRadar; Doc.ResizeStructure(1,1); Panel.Load(Doc);
+    Doc.ResizeStructure(2,9); Panel.Load(Doc);
+    if Doc.Series[8].FillColor<>$FF123456 then raise Exception.Create('Hidden data color was lost');
+    Writeln('PASS graph-dependent swatches, line selectors and style persistence');
+  finally Panel.Free; Doc.Free; end;
+end;
 var StoredValues:UTF8String='0,0,0\n0,0,0\n0,0,0';
 function GetItem(Obj:OBJECT_HANDLE; Effect,Item:LPCWSTR):PAnsiChar; cdecl;
 begin
@@ -100,18 +233,21 @@ var F:TGraphEditorForm; D:TGraphDocument; S:TGraphShared; I:Integer;
   Number:TNumberProbe; Layout:TGraphLayoutPanel; Preset:TDarkComboBox;
   Data:TGraphDataPanel; NameFirst,NameSecond:TEdit; Key:Word;
   WheelHandled:Boolean;
-  Style:TGraphStylePanel; Mode,Target:TDarkComboBox;
+  Colors:TGraphColorStylePanel; Swatch:TPanel;
+  Style:TGraphStylePanel;
   WidthSlider:THorizontalTrackBarControl; LineKind:TComboBox;
   WheelEdit:TGraphNumberEdit; ActiveNumberEdit:TEdit; WheelPoint:TPoint;
-  OldPosition:Integer;
+  OldPosition:Integer; PreviewTimer:TTimer; OutlineSwatch:TPanel; OutlineSlider:THorizontalTrackBarControl;
   {$IFDEF GRAPH_SNAPSHOT}Shot:TBitmap; Ppi:Integer;{$ENDIF}
 begin
   try
     Application.Initialize;
+    CheckInvalidClose;
     F:=TGraphEditorForm.Create(nil);
     try
       F.Load(nil,640,480,'',DefaultShared);
       Writeln('PASS editor creation and load');
+      CheckColorStyles(F); CheckLineRows(F); CheckCountInputs(F);
       Hue:=nil; SV:=nil; CodeEdit:=nil; CodeCount:=0;
       Picker:=FindPicker(F); Scroll:=FindScroll(F);
       for I:=0 to F.ComponentCount-1 do
@@ -150,40 +286,69 @@ begin
         if Saved.Lines[0].Color<>$FFFF8000 then
           raise Exception.Create('Shared picker did not update the selected line color');
       finally Saved.Free; end;
-      Style:=FindStyle(F); Mode:=nil; Target:=nil;
+      Style:=FindStyle(F);
       WidthSlider:=nil; LineKind:=nil;
       if Style=nil then raise Exception.Create('Style panel is missing');
       for I:=0 to Style.ComponentCount-1 do
       begin
         if (Style.Components[I] is THorizontalTrackBarControl) and
-          (THorizontalTrackBarControl(Style.Components[I]).Top=180) then
+          (THorizontalTrackBarControl(Style.Components[I]).Tag=0) then
           WidthSlider:=THorizontalTrackBarControl(Style.Components[I]);
-        if (Style.Components[I] is TComboBox) and
-          (TComboBox(Style.Components[I]).Top=112) then
+        if (Style.Components[I] is TComboBox) and (TComboBox(Style.Components[I]).Tag=0) then
           LineKind:=TComboBox(Style.Components[I]);
-        if Style.Components[I] is TDarkComboBox then
-        begin
-          if (TDarkComboBox(Style.Components[I]).Top=36) and
-            (TDarkComboBox(Style.Components[I]).Left=12) then
-            Mode:=TDarkComboBox(Style.Components[I]);
-          if TDarkComboBox(Style.Components[I]).Top=326 then
-            Target:=TDarkComboBox(Style.Components[I]);
-        end;
       end;
-      if (Mode=nil) or (Target=nil) or (WidthSlider=nil) or (LineKind=nil) then
-        raise Exception.Create('Color target selectors are missing');
+      if (WidthSlider=nil) or (LineKind=nil) then raise Exception.Create('Line row controls are missing');
+      if WidthSlider.Top<>LineKind.Top then raise Exception.Create('Line row controls are not aligned');
       if (LineKind.ItemHeight<26) or (LineKind.DropDownWidth<LineKind.Width) or
         not WidthSlider.WheelChangesPosition then
         raise Exception.Create('Line list or slider wheel setup is wrong');
-      WidthSlider.Position:=75;
+      OutlineSwatch:=nil; OutlineSlider:=nil; PreviewTimer:=nil;
+      for I:=0 to Style.ComponentCount-1 do
+      begin
+        if (Style.Components[I] is TPanel) and (TPanel(Style.Components[I]).Tag=6) then
+          OutlineSwatch:=TPanel(Style.Components[I]);
+        if (Style.Components[I] is THorizontalTrackBarControl) and
+          (THorizontalTrackBarControl(Style.Components[I]).Tag=6) then
+          OutlineSlider:=THorizontalTrackBarControl(Style.Components[I]);
+        if (Style.Components[I] is TLabel) and (TLabel(Style.Components[I]).Caption='縁取り') then
+          raise Exception.Create('Outline caption remains');
+      end;
+      for I:=0 to F.ComponentCount-1 do
+        if F.Components[I] is TTimer then PreviewTimer:=TTimer(F.Components[I]);
+      if (OutlineSwatch=nil) or (OutlineSlider=nil) or (PreviewTimer=nil) then
+        raise Exception.Create('Aligned outline tools or preview timer are missing');
+      if (OutlineSwatch.Left<>12) or (OutlineSlider.Left<>WidthSlider.Left) or
+        (OutlineSlider.Width<>WidthSlider.Width) or (LineKind.Width<110) then
+        raise Exception.Create('Color/width columns or line kind width are wrong');
+      for I:=20 to 75 do WidthSlider.Position:=I;
+      if not PreviewTimer.Enabled or (PreviewTimer.Interval<>60) then
+        raise Exception.Create('Continuous slider edits were not queued');
+      WidthSlider.OnMouseUp(WidthSlider,mbLeft,[],0,0);
+      if PreviewTimer.Enabled then raise Exception.Create('Slider release did not flush final preview');
+      Writeln('PASS aligned line controls and coalesced slider preview');
       LineKind.ItemIndex:=2; LineKind.OnChange(LineKind);
       Saved:=LoadGraph(F.Settings);
       try
         if (Abs(Saved.Lines[0].Width-7.5)>0.001) or (Saved.Lines[0].Kind<>2) then
           raise Exception.Create('Dedicated line tools did not update model');
       finally Saved.Free; end;
-      Mode.ItemIndex:=1; Mode.OnChange(Mode);
-      Target.ItemIndex:=1; Target.OnChange(Target);
+      Layout:=FindLayout(F);
+      for I:=0 to Layout.ComponentCount-1 do
+        if (Layout.Components[I] is TDarkComboBox) and
+          (TDarkComboBox(Layout.Components[I]).Top=36) then
+        begin
+          TDarkComboBox(Layout.Components[I]).ItemIndex:=Ord(gkBar);
+          TDarkComboBox(Layout.Components[I]).OnChange(Layout.Components[I]);
+        end;
+      Style.OnChange(Style);
+      Saved:=LoadGraph(F.Settings); Saved.Free;
+      Colors:=TGraphSettingsPane(FindPicker(F).Owner).ColorPanel;
+      Swatch:=nil;
+      for I:=0 to Colors.ComponentCount-1 do
+        if Colors.Components[I] is TPanel then
+        begin Swatch:=TPanel(Colors.Components[I]); Break; end;
+      if Swatch=nil then raise Exception.Create('Series swatches are missing');
+      Swatch.OnClick(Swatch);
       CodeEdit.Text:='#abcdef'; CodeEdit.OnExit(CodeEdit);
       Saved:=LoadGraph(F.Settings);
       try
@@ -272,8 +437,7 @@ begin
       WheelEdit.BeginEdit; ActiveNumberEdit.Text:='41'; NameFirst.SetFocus;
       if WheelEdit.Editing or (WheelEdit.Text<>'41') then
         raise Exception.Create('Focus loss did not commit number edit');
-      Mode.ItemIndex:=0; Mode.OnChange(Mode);
-      Scroll.Position:=Scroll.Maximum;
+      Scroll.Position:=Style.Top+WidthSlider.Top-100;
       OldPosition:=WidthSlider.Position; WheelHandled:=False;
       F.OnMouseWheel(F,[],120,WidthSlider.ClientToScreen(Point(20,16)),WheelHandled);
       if not WheelHandled or (WidthSlider.Position<=OldPosition) then
@@ -342,6 +506,7 @@ begin
     D:=TGraphDocument.Create;
     try
       D.Kind:=gkBar; D.ResetBounds(500,300);
+      D.TextStyles[trTitle].OutlineWidth:=0; // 無効状態からの有効化・解除を検証する。
       View:=TGraphView.Create(F); View.Parent:=F; View.SetBounds(0,0,500,300);
       View.SetView(1,0,0);
       SetLength(TestLabels,1);

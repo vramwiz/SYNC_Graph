@@ -3,7 +3,7 @@
 
 // 実際のグラフ専用ユニットを使い、値・保存・透過・4種の描画を検証する。
 uses System.SysUtils, System.Types, System.Skia, GraphModel, GraphValues,
-  GraphSettings, GraphAnimation, GraphRenderer, GraphPainter, GraphComposite;
+  GraphSettings, GraphFonts, GraphAnimation, GraphRenderer, GraphPainter, GraphComposite;
 var Count:Integer;
 procedure Check(Condition:Boolean; const Name:string);
 begin
@@ -17,6 +17,130 @@ begin
   for L in Labels do
     if L.ID=2+MaxGraphRows then Exit(L.Bounds.Top);
 end;
+procedure CheckTextOnTop;
+var D:TGraphDocument; Shared:TGraphShared; Animation:TGraphAnimation; K:TGraphKind;
+  Full,TextOnly:TBytes; Labels:TArray<TGraphLabel>; L:TGraphLabel; I,Opaque:Integer;
+begin
+  D:=TGraphDocument.Create;
+  try
+    D.ResizeStructure(3,1); D.ResetBounds(320,240); D.ValueFormat:='';
+    D.TextStyles[trName].Color:=$FFFF00FF; D.TextStyles[trName].OutlineWidth:=0;
+    D.Lines[3].Kind:=1; D.Lines[3].Width:=12;
+    Shared:=DefaultShared; Shared.Title:=''; Shared.Units:='';
+    Shared.Names:='TEXT'#13#10'B'#13#10'C'; Shared.Values:='100'#13#10'100'#13#10'100';
+    Animation:=Default(TGraphAnimation);
+    for K:=gkRadar to gkPie do
+    begin
+      D.Kind:=K; D.ResetOffsets;
+      Full:=RenderGraph(D,Shared,Animation,320,240,Labels);
+      for L in Labels do
+        if L.ID=2 then D.Offsets[2]:=PointF(D.Bounds.CenterPoint.X-L.Bounds.CenterPoint.X,
+          D.Bounds.CenterPoint.Y-L.Bounds.CenterPoint.Y);
+      Full:=RenderGraph(D,Shared,Animation,320,240,Labels);
+      TextOnly:=RenderGraph(D,Shared,Animation,320,240,Labels,2);
+      Opaque:=0;
+      for I:=0 to 320*240-1 do
+        if TextOnly[I*4+3]=255 then
+        begin
+          Inc(Opaque);
+          if (Full[I*4]<>255) or (Full[I*4+1]<>0) or (Full[I*4+2]<>255) then
+            raise Exception.Create('Text was covered by graph or line');
+        end;
+      Check(Opaque>0,'element name stays above graph and lines '+IntToStr(Ord(K)));
+    end;
+  finally D.Free; end;
+end;
+procedure CheckFonts;
+var Runs:TArray<TGraphFontRun>; Run:TGraphFontRun; G:Word; Text:string;
+  D,E:TGraphDocument; Role:TTextRole;
+begin
+  Check(HasGraphGlyphs(ResolveGraphTypeface('ＭＳ ゴシック',TSkFontStyle.Normal),'日本語グラフ'),
+    'localized GDI font name resolves Japanese glyphs');
+  Text:='ABC日本語123'; Runs:=GraphFontRuns('Arial',Text,TSkFontStyle.Normal,28);
+  Check(Length(Runs)>1,'Latin font falls back for Japanese only'); Text:='';
+  for Run in Runs do
+  begin
+    Text:=Text+Run.Text;
+    for G in Run.Font.GetGlyphs(Run.Text) do Check(G<>0,'mixed text run has no missing glyph');
+  end;
+  Check(Text='ABC日本語123','fallback keeps original character order');
+  D:=TGraphDocument.Create;
+  try
+    for Role:=Low(TTextRole) to High(TTextRole) do Check(D.TextStyles[Role].OutlineWidth=1,'new text outline default one');
+    D.TextStyles[trTitle].OutlineWidth:=0; E:=LoadGraph(SaveGraph(D));
+    try Check(E.TextStyles[trTitle].OutlineWidth=0,'saved disabled outline is preserved'); finally E.Free; end;
+  finally D.Free; end;
+end;
+procedure CheckRadarOverlap;
+var Doc:TGraphDocument; Shared:TGraphShared; Animation:TGraphAnimation;
+  Pixels:TBytes; Labels:TArray<TGraphLabel>; I,Inside,Outside,Edge:Integer;
+begin
+  Doc:=TGraphDocument.Create;
+  try
+    Doc.Kind:=gkRadar; Doc.ResizeStructure(4,2); Doc.Bounds:=RectF(40,40,280,200);
+    Doc.Minimum:='0'; Doc.Maximum:='100'; Doc.Interval:='100'; Doc.ValueFormat:='';
+    for I:=0 to High(Doc.Lines) do Doc.Lines[I].Kind:=0;
+    Doc.Series[0].FillColor:=$FFFF0000; Doc.Series[1].FillColor:=$FF0000FF;
+    Shared:=DefaultShared; Shared.Title:=''; Shared.Units:='';
+    Shared.Names:='A'#13#10'B'#13#10'C'#13#10'D';
+    Shared.Values:='50,100'#13#10'50,100'#13#10'50,100'#13#10'50,100';
+    Animation:=Default(TGraphAnimation);
+    Pixels:=RenderGraph(Doc,Shared,Animation,320,240,Labels);
+    Inside:=(140*320+170)*4; Outside:=(125*320+215)*4;
+    Check(Pixels[Inside+3]=255,'radar bottom fill remains opaque');
+    Check((Abs(Integer(Pixels[Inside])-153)<=2) and
+      (Abs(Integer(Pixels[Inside+2])-102)<=2),'radar overlapping fills blend at 40 percent');
+    Check(Abs(Integer(Pixels[Outside+3])-102)<=2,'radar upper fill alone has 40 percent opacity');
+    Doc.Lines[4].Kind:=1; Doc.Lines[4].Width:=6;
+    Pixels:=RenderGraph(Doc,Shared,Animation,320,240,Labels);
+    Edge:=(135*320+185)*4;
+    Check((Pixels[Edge]>240) and (Pixels[Edge+2]<10) and (Pixels[Edge+3]=255),
+      'radar lower outline stays visible over upper fill in data color');
+  finally Doc.Free; end;
+end;
+procedure CheckDataLines;
+var Doc:TGraphDocument; Shared:TGraphShared; Animation:TGraphAnimation;
+  K:TGraphKind; Index:Integer; A,B:TBytes; Labels:TArray<TGraphLabel>;
+begin
+  Doc:=TGraphDocument.Create;
+  try
+    Doc.ResetBounds(320,240); Shared:=DefaultShared;
+    Shared.Values:='30,60,50'#13#10'80,40,90'#13#10'50,70,30';
+    Animation:=Default(TGraphAnimation);
+    for K:=gkRadar to gkPie do
+    begin
+      Doc.Kind:=K;
+      if K=gkPie then Index:=5 else Index:=4;
+      Doc.Lines[Index].Kind:=1; Doc.Lines[Index].Width:=2;
+      Doc.Lines[Index].Color:=$FFFF0000;
+      A:=RenderGraph(Doc,Shared,Animation,320,240,Labels);
+      Doc.Lines[Index].Color:=$FF00FF00;
+      B:=RenderGraph(Doc,Shared,Animation,320,240,Labels);
+      if K in [gkLine,gkRadar] then Check(CompareMem(@A[0],@B[0],Length(A)),'line uses data color '+IntToStr(Ord(K)))
+      else Check(not CompareMem(@A[0],@B[0],Length(A)),'data outline uses common color '+IntToStr(Ord(K)));
+      Doc.Lines[Index].Width:=0;
+      with LoadGraph(SaveGraph(Doc)) do
+      try Check(Lines[Index].Width=0,'zero line width round trip '+IntToStr(Ord(K))); finally Free; end;
+      A:=B;
+      Doc.Lines[Index].Width:=12;
+      B:=RenderGraph(Doc,Shared,Animation,320,240,Labels);
+      Check(not CompareMem(@A[0],@B[0],Length(A)),'data line width renders '+IntToStr(Ord(K)));
+      Doc.Lines[Index].Width:=2;
+      A:=RenderGraph(Doc,Shared,Animation,320,240,Labels);
+      if K=gkLine then Doc.Series[0].LineKind:=3 else Doc.Lines[Index].Kind:=3;
+      B:=RenderGraph(Doc,Shared,Animation,320,240,Labels);
+      Check(not CompareMem(@A[0],@B[0],Length(A)),'data line kind renders '+IntToStr(Ord(K)));
+      if K<>gkLine then
+      begin
+        Doc.Lines[Index].OutlineWidth:=3; Doc.Lines[Index].Width:=0;
+        A:=RenderGraph(Doc,Shared,Animation,320,240,Labels);
+        Doc.Lines[Index].Width:=2; Doc.Lines[Index].Kind:=0;
+        B:=RenderGraph(Doc,Shared,Animation,320,240,Labels);
+        Check(CompareMem(@A[0],@B[0],Length(A)),'zero width hides outline '+IntToStr(Ord(K)));
+      end;
+    end;
+  finally Doc.Free; end;
+end;
 procedure Run;
 var D,E:TGraphDocument; S:TGraphShared; V:TGraphValues; Scale:TGraphScale;
   A:TGraphAnimation; Pixels,Background:TBytes; Labels:TArray<TGraphLabel>;
@@ -25,14 +149,15 @@ var D,E:TGraphDocument; S:TGraphShared; V:TGraphValues; Scale:TGraphScale;
   TitleWidth,PartialLabelTop,FullLabelTop:Single;
   Solo:TGraphShared; PartialAlpha,FullAlpha:Integer;
 begin
+  CheckTextOnTop; CheckFonts; CheckRadarOverlap; CheckDataLines;
   D:=TGraphDocument.Create;
   try
     D.ResetBounds(640,480); S:=DefaultShared;
-    Check((D.TextStyles[trTitle].OutlineWidth=0) and
+    Check((D.TextStyles[trTitle].OutlineWidth=1) and
       (D.TextStyles[trTitle].OutlineBlur=0) and
       (D.TextStyles[trTitle].ShadowX=0) and
       (D.TextStyles[trTitle].ShadowY=0) and
-      (D.TextStyles[trTitle].ShadowBlur=0),'text decoration starts disabled');
+      (D.TextStyles[trTitle].ShadowBlur=0),'text outline starts at one with shadow and blur disabled');
     S.Title:='Graph'; S.Names:='A'#13#10'B'#13#10'C'; S.Units:='kg';
     S.Values:='10,20,30'#13#10'15,25,35'#13#10'20,30,40';
     V:=ParseValues(S.Values,3,3); Check(V[2,2]=40,'matrix order');
@@ -44,11 +169,12 @@ begin
     Check(FormatGraphValue(1,'')='','empty format hides values');
     D.Kind:=gkBar; D.Stacked:=True; V:=ParseValues(S.Values,3,3);
     Scale:=CalculateScale(D,V); Check(Scale.Maximum>=105,'stacked automatic scale');
-    D.Series[0].Transparency:=45; D.Offsets[3]:=PointF(12,18);
+    D.Series[0].LineKind:=3; D.Series[0].Transparency:=45; D.Offsets[3]:=PointF(12,18);
     D.LabelScales[0]:=1.5; D.ValueFormat:='0.0kg';
     Text:=SaveGraph(D); E:=LoadGraph(Text);
     try
       Check(E.Series[0].Transparency=45,'style round trip');
+      Check(E.Series[0].LineKind=3,'series line kind round trip');
       Check(E.Offsets[3].Y=18,'offset round trip');
       Check(E.LabelScales[0]=1.5,'label scale round trip');
       E.ResizeStructure(1,1); E.ResizeStructure(3,3);

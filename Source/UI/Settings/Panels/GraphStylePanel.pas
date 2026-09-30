@@ -1,29 +1,27 @@
 ﻿unit GraphStylePanel;
 
-// 線種・太さ・色対象を専用UIで編集し、共通カラーピッカーと接続する。
+// 線描画の箇所ごとに色・太さ・線種を横並びで編集する。
 interface
-uses System.Classes, System.Types, System.UITypes, Vcl.ExtCtrls, Vcl.StdCtrls, Vcl.Controls,
-  DarkComboBox, HorizontalTrackBarControl, GraphNumberEdit, GraphModel;
+uses System.Classes, System.Types, System.UITypes, Vcl.ExtCtrls, Vcl.StdCtrls,
+  Vcl.Controls, HorizontalTrackBarControl, GraphModel;
 type
   TGraphStylePanel=class(TPanel)
   private
-    FMode,FIndex,FColorTarget:TDarkComboBox;
-    FLineKind,FMarker:TComboBox;
-    FLineKindLabel,FMarkerLabel:TLabel;
-    FLineWidth,FOutlineWidth:THorizontalTrackBarControl;
-    FLineWidthLabel,FOutlineWidthLabel:TLabel;
-    FTransparency:TGraphNumberEdit;
-    FTransparencyLabel:TLabel;
-    FColorSwatch:TPanel;
+    FLabels:array[0..5] of TLabel;
+    FColors,FOutlineColors:array[0..5] of TPanel;
+    FWidths,FOutlineWidths:array[0..5] of THorizontalTrackBarControl;
+    FKinds:array[0..5] of TComboBox;
     FDoc:TGraphDocument;
-    FBusy:Boolean;
+    FRowCaptions:array[0..5] of string;
+    FWidthChanging:Boolean;
+    FOnEditFinished:TNotifyEvent;
+    FIndex:Integer;
+    FOutline,FBusy:Boolean;
     FOnChange,FOnColorTargetChange:TNotifyEvent;
-    procedure SelectMode(Sender:TObject);
-    procedure SelectIndex(Sender:TObject);
-    procedure TargetChanged(Sender:TObject);
+    procedure SelectColor(Sender:TObject);
+    procedure WidthReleased(Sender:TObject; Button:TMouseButton; Shift:TShiftState; X,Y:Integer);
     procedure StyleChanged(Sender:TObject);
-    procedure DrawLineKind(Control:TWinControl; Index:Integer; Rect:TRect;
-      State:TOwnerDrawState);
+    procedure DrawLineKind(Control:TWinControl; Index:Integer; Rect:TRect; State:TOwnerDrawState);
     function GetSelectedColor:TAlphaColor;
   public
     constructor Create(AOwner:TComponent); override;
@@ -31,213 +29,165 @@ type
     procedure RefreshValues;
     procedure Apply;
     procedure SetSelectedColor(Color:TAlphaColor);
+    property WidthChanging:Boolean read FWidthChanging;
+    property OnEditFinished:TNotifyEvent read FOnEditFinished write FOnEditFinished;
     property SelectedColor:TAlphaColor read GetSelectedColor;
     property OnChange:TNotifyEvent read FOnChange write FOnChange;
     property OnColorTargetChange:TNotifyEvent read FOnColorTargetChange write FOnColorTargetChange;
   end;
 implementation
-uses System.SysUtils, System.Math, Winapi.Windows, Vcl.Graphics;
-
+uses System.SysUtils, System.Math, Vcl.Graphics, Winapi.Windows;
 constructor TGraphStylePanel.Create(AOwner:TComponent);
-var L:TLabel;
+var I:Integer; L:TLabel;
+  function Swatch(Tag:Integer):TPanel;
+  begin
+    Result:=TPanel.Create(Self); Result.Parent:=Self; Result.Tag:=Tag;
+    Result.ParentBackground:=False; Result.StyleElements:=[];
+    Result.BevelOuter:=bvRaised; Result.ShowHint:=True; Result.Hint:='クリックして色を編集';
+    Result.OnClick:=SelectColor;
+  end;
+  function Slider(Tag:Integer):THorizontalTrackBarControl;
+  begin
+    Result:=THorizontalTrackBarControl.Create(Self); Result.Parent:=Self; Result.Tag:=Tag;
+    Result.SetRange(0,200); Result.ShowTicks:=False; Result.WheelChangesPosition:=True;
+    Result.ShowHint:=True; Result.OnChange:=StyleChanged; Result.OnMouseUp:=WidthReleased;
+  end;
 begin
   inherited;
   if AOwner is TWinControl then Parent:=TWinControl(AOwner);
-  Width:=290; Height:=390; BevelOuter:=bvNone; Color:=$00303030;
-  L:=TLabel.Create(Self); L.Parent:=Self; L.Caption:='装飾'; L.SetBounds(12,8,300,24);
-  FMode:=TDarkComboBox.Create(Self); FMode.Parent:=Self; FMode.SetBounds(12,36,96,34);
-  FMode.Items.Add('線'); FMode.Items.Add('系列'); FMode.ItemIndex:=0;
-  FMode.OnChange:=SelectMode;
-  FIndex:=TDarkComboBox.Create(Self); FIndex.Parent:=Self; FIndex.SetBounds(116,36,168,34);
-  FIndex.OnChange:=SelectIndex;
-  FLineKindLabel:=TLabel.Create(Self); FLineKindLabel.Parent:=Self;
-  FLineKindLabel.Caption:='線種'; FLineKindLabel.SetBounds(12,86,80,24);
-  FLineKind:=TComboBox.Create(Self); FLineKind.Parent:=Self;
-  FLineKind.SetBounds(12,112,272,32); FLineKind.Style:=csOwnerDrawFixed;
-  FLineKind.ItemHeight:=28; FLineKind.DropDownWidth:=272;
-  FLineKind.Color:=$00303030; FLineKind.Font.Color:=$00EEEEEE;
-  FLineKind.Items.Add('なし'); FLineKind.Items.Add('実線');
-  FLineKind.Items.Add('破線'); FLineKind.Items.Add('点線');
-  FLineKind.OnDrawItem:=DrawLineKind; FLineKind.OnChange:=StyleChanged;
-  FLineWidthLabel:=TLabel.Create(Self); FLineWidthLabel.Parent:=Self;
-  FLineWidthLabel.SetBounds(12,156,272,24);
-  FLineWidth:=THorizontalTrackBarControl.Create(Self); FLineWidth.Parent:=Self;
-  FLineWidth.SetBounds(12,180,272,32); FLineWidth.SetRange(0,200);
-  FLineWidth.ShowTicks:=False; FLineWidth.WheelChangesPosition:=True;
-  FLineWidth.OnChange:=StyleChanged;
-  FOutlineWidthLabel:=TLabel.Create(Self); FOutlineWidthLabel.Parent:=Self;
-  FOutlineWidthLabel.SetBounds(12,222,272,24);
-  FOutlineWidth:=THorizontalTrackBarControl.Create(Self); FOutlineWidth.Parent:=Self;
-  FOutlineWidth.SetBounds(12,246,272,32); FOutlineWidth.SetRange(0,200);
-  FOutlineWidth.ShowTicks:=False; FOutlineWidth.WheelChangesPosition:=True;
-  FOutlineWidth.OnChange:=StyleChanged;
-  FTransparencyLabel:=TLabel.Create(Self); FTransparencyLabel.Parent:=Self;
-  FTransparencyLabel.Caption:='透明度 (0～100)'; FTransparencyLabel.SetBounds(12,156,126,24);
-  FTransparency:=TGraphNumberEdit.Create(Self); FTransparency.Parent:=Self;
-  FTransparency.SetBounds(146,152,138,30); FTransparency.Minimum:=0;
-  FTransparency.Maximum:=100; FTransparency.OnChange:=StyleChanged;
-  FMarkerLabel:=TLabel.Create(Self); FMarkerLabel.Parent:=Self;
-  FMarkerLabel.Caption:='マーク'; FMarkerLabel.SetBounds(12,204,80,24);
-  FMarker:=TComboBox.Create(Self); FMarker.Parent:=Self; FMarker.Style:=csDropDownList;
-  FMarker.SetBounds(146,198,138,32); FMarker.Items.Add('なし');
-  FMarker.Items.Add('円'); FMarker.Items.Add('角'); FMarker.OnChange:=StyleChanged;
-  L:=TLabel.Create(Self); L.Parent:=Self; L.Caption:='カラー対象'; L.SetBounds(12,300,130,24);
-  FColorTarget:=TDarkComboBox.Create(Self); FColorTarget.Parent:=Self;
-  FColorTarget.SetBounds(12,326,204,34); FColorTarget.OnChange:=TargetChanged;
-  FColorSwatch:=TPanel.Create(Self); FColorSwatch.Parent:=Self;
-  FColorSwatch.SetBounds(224,326,60,34); FColorSwatch.BevelOuter:=bvLowered;
-  FColorSwatch.ParentBackground:=False; FColorSwatch.ParentColor:=False;
-  FColorSwatch.StyleElements:=[];
+  Width:=290; Height:=620; BevelOuter:=bvNone; Color:=$00303030;
+  L:=TLabel.Create(Self); L.Parent:=Self; L.Caption:='線（色・太さ・線種）'; L.SetBounds(12,8,272,24);
+  for I:=0 to 5 do
+  begin
+    FLabels[I]:=TLabel.Create(Self); FLabels[I].Parent:=Self;
+    FColors[I]:=Swatch(I); FOutlineColors[I]:=Swatch(I+6);
+    FWidths[I]:=Slider(I); FOutlineWidths[I]:=Slider(I+6);
+    FKinds[I]:=TComboBox.Create(Self); FKinds[I].Parent:=Self; FKinds[I].Tag:=I;
+    FKinds[I].Style:=csOwnerDrawFixed; FKinds[I].ItemHeight:=28; FKinds[I].DropDownWidth:=160;
+    FKinds[I].Color:=$00303030; FKinds[I].Font.Color:=$00EEEEEE;
+    FKinds[I].Items.Add('なし'); FKinds[I].Items.Add('実線');
+    FKinds[I].Items.Add('破線'); FKinds[I].Items.Add('点線');
+    FKinds[I].OnDrawItem:=DrawLineKind; FKinds[I].OnChange:=StyleChanged;
+  end;
 end;
-
 procedure TGraphStylePanel.Load(Doc:TGraphDocument);
-begin FDoc:=Doc; SelectMode(nil); end;
-
-procedure TGraphStylePanel.SelectMode(Sender:TObject);
-var I:Integer;
+var I,Y:Integer; ShowRow,ElementStyle:Boolean; Caption:string; L:TLineStyle;
+  procedure Bounds(Control:TControl; X,Y,W,H:Integer);
+  begin
+    Control.SetBounds(MulDiv(X,CurrentPPI,96),MulDiv(Y,CurrentPPI,96),
+      MulDiv(W,CurrentPPI,96),MulDiv(H,CurrentPPI,96));
+  end;
+  procedure PaintSwatch(Control:TPanel; C:TAlphaColor);
+  begin Control.Color:=TColor(((C and $FF) shl 16) or (C and $FF00) or ((C shr 16) and $FF)); end;
 begin
+  FDoc:=Doc; if Doc=nil then Exit;
   FBusy:=True;
   try
-    FIndex.Items.Clear;
-    if FMode.ItemIndex=0 then
+    Y:=38;
+    for I:=0 to 5 do
     begin
-      FIndex.Items.Add('X軸・基準線'); FIndex.Items.Add('Y軸');
-      FIndex.Items.Add('目盛線'); FIndex.Items.Add('外枠');
-      FIndex.Items.Add('系列線・棒枠'); FIndex.Items.Add('円区切り線');
-    end
-    else if FDoc<>nil then
-      for I:=1 to FDoc.SeriesCount do FIndex.Items.Add('系列 / 区画 '+IntToStr(I));
-    FIndex.ItemIndex:=0;
-  finally FBusy:=False; end;
-  FColorTarget.ItemIndex:=0;
-  SelectIndex(nil);
-end;
-
-procedure TGraphStylePanel.SelectIndex(Sender:TObject);
-var L:TLineStyle; V:TSeriesStyle; IsLine:Boolean; SavedTarget:Integer;
-begin
-  if FBusy or (FDoc=nil) or (FIndex.ItemIndex<0) then Exit;
-  IsLine:=FMode.ItemIndex=0;
-  SavedTarget:=Max(0,FColorTarget.ItemIndex);
-  FBusy:=True;
-  try
-    FLineKind.Visible:=IsLine; FLineKindLabel.Visible:=IsLine;
-    FLineWidth.Visible:=IsLine;
-    FOutlineWidth.Visible:=IsLine; FLineWidthLabel.Visible:=IsLine;
-    FOutlineWidthLabel.Visible:=IsLine;
-    FTransparency.Visible:=not IsLine; FTransparencyLabel.Visible:=not IsLine;
-    FMarker.Visible:=not IsLine; FMarkerLabel.Visible:=not IsLine;
-    FColorTarget.Items.Clear;
-    FColorTarget.Items.Add('線色');
-    if IsLine then
-    begin
-      FColorTarget.Items.Add('縁取り色');
-      L:=FDoc.Lines[FIndex.ItemIndex];
-      FLineKind.ItemIndex:=EnsureRange(L.Kind,0,3);
-      FLineWidth.Position:=EnsureRange(Round(L.Width*10),0,200);
-      FOutlineWidth.Position:=EnsureRange(Round(L.OutlineWidth*10),0,200);
-      FLineWidthLabel.Caption:=Format('線太さ %.1f',[L.Width]);
-      FOutlineWidthLabel.Caption:=Format('縁取り太さ %.1f',[L.OutlineWidth]);
-    end
-    else
-    begin
-      FColorTarget.Items.Add('塗り色');
-      V:=FDoc.Series[FIndex.ItemIndex];
-      FTransparency.Text:=FormatFloat('0.###',V.Transparency,TFormatSettings.Invariant);
-      FMarker.ItemIndex:=EnsureRange(V.Marker,0,2);
+      ShowRow:=True; ElementStyle:=(Doc.Kind in [gkLine,gkRadar]) and (I=4);
+      case I of
+        0:begin
+          Caption:='X軸・基準線';
+          if Doc.Kind=gkRadar then Caption:='放射軸';
+          if Doc.Kind=gkPie then Caption:='要素名の引出線';
+        end;
+        1:begin Caption:='Y軸'; ShowRow:=Doc.Kind in [gkNone,gkLine,gkBar]; end;
+        2:begin Caption:='目盛り'; ShowRow:=Doc.Kind<>gkPie; end;
+        3:Caption:='グラフ領域の外枠';
+        4:begin
+          ShowRow:=Doc.Kind<>gkPie;
+          Caption:='データの外周';
+          if Doc.Kind=gkRadar then Caption:='データの外周（色はデータ設定）';
+          if Doc.Kind=gkBar then Caption:='棒の縁';
+          if Doc.Kind=gkLine then Caption:='折れ線（色・線種は要素設定）';
+        end;
+        5:begin Caption:='扇形の外周・区切り'; ShowRow:=Doc.Kind in [gkNone,gkPie]; end;
+      end;
+      L:=Doc.Lines[I];
+      FRowCaptions[I]:=Caption;
+      FLabels[I].Caption:=Caption+Format('  %.1f',[L.Width]);
+      FLabels[I].Visible:=ShowRow; FColors[I].Visible:=ShowRow and not ElementStyle;
+      FWidths[I].Visible:=ShowRow; FKinds[I].Visible:=ShowRow and not ((Doc.Kind=gkLine) and (I=4));
+      FOutlineColors[I].Visible:=ShowRow;
+      FOutlineWidths[I].Visible:=ShowRow;
+      Bounds(FLabels[I],12,Y,272,24);
+      Bounds(FColors[I],12,Y+26,30,30);
+      Bounds(FWidths[I],50,Y+26,94,30);
+      Bounds(FKinds[I],152,Y+26,116,32);
+      FKinds[I].DropDownWidth:=MulDiv(160,CurrentPPI,96);
+      Bounds(FOutlineColors[I],12,Y+62,30,30);
+      Bounds(FOutlineWidths[I],50,Y+62,94,30);
+      FWidths[I].Position:=EnsureRange(Round(L.Width*10),0,200);
+      FOutlineWidths[I].Position:=EnsureRange(Round(L.OutlineWidth*10),0,200);
+      FWidths[I].Hint:=Format('線太さ %.1f',[L.Width]);
+      FOutlineWidths[I].Hint:=Format('縁取り太さ %.1f',[L.OutlineWidth]);
+      FKinds[I].ItemIndex:=EnsureRange(L.Kind,0,3);
+      PaintSwatch(FColors[I],L.Color); PaintSwatch(FOutlineColors[I],L.OutlineColor);
+      if ShowRow then Inc(Y,104);
     end;
-    FColorTarget.ItemIndex:=Min(SavedTarget,FColorTarget.Items.Count-1);
+    Height:=MulDiv(Y+8,CurrentPPI,96);
   finally FBusy:=False; end;
-  TargetChanged(nil);
 end;
-
-procedure TGraphStylePanel.TargetChanged(Sender:TObject);
+procedure TGraphStylePanel.SelectColor(Sender:TObject);
+var Tag:Integer;
 begin
-  FColorSwatch.Color:=TColor((SelectedColor and $FF) shl 16 or
-    (SelectedColor and $FF00) or (SelectedColor shr 16 and $FF));
+  Tag:=TControl(Sender).Tag; FIndex:=Tag mod 6; FOutline:=Tag>=6;
   if Assigned(FOnColorTargetChange) then FOnColorTargetChange(Self);
 end;
-
 function TGraphStylePanel.GetSelectedColor:TAlphaColor;
 begin
-  Result:=$FFFFFFFF;
-  if (FDoc=nil) or (FIndex.ItemIndex<0) then Exit;
-  if FMode.ItemIndex=0 then
-  begin
-    if FColorTarget.ItemIndex=1 then Result:=FDoc.Lines[FIndex.ItemIndex].OutlineColor
-    else Result:=FDoc.Lines[FIndex.ItemIndex].Color;
-  end
-  else if FColorTarget.ItemIndex=1 then Result:=FDoc.Series[FIndex.ItemIndex].FillColor
-  else Result:=FDoc.Series[FIndex.ItemIndex].LineColor;
+  Result:=$FFFFFFFF; if FDoc=nil then Exit;
+  if FOutline then Result:=FDoc.Lines[FIndex].OutlineColor else Result:=FDoc.Lines[FIndex].Color;
 end;
-
 procedure TGraphStylePanel.SetSelectedColor(Color:TAlphaColor);
-var L:TLineStyle; V:TSeriesStyle; Old:TAlphaColor;
+var L:TLineStyle;
 begin
-  if (FDoc=nil) or (FIndex.ItemIndex<0) then Exit;
-  Old:=SelectedColor;
-  Color:=(Old and $FF000000) or (Color and $00FFFFFF);
-  if Old=Color then Exit;
-  if FMode.ItemIndex=0 then
-  begin
-    L:=FDoc.Lines[FIndex.ItemIndex];
-    if FColorTarget.ItemIndex=1 then L.OutlineColor:=Color else L.Color:=Color;
-    FDoc.Lines[FIndex.ItemIndex]:=L;
-  end
-  else
-  begin
-    V:=FDoc.Series[FIndex.ItemIndex];
-    if FColorTarget.ItemIndex=1 then V.FillColor:=Color else V.LineColor:=Color;
-    FDoc.Series[FIndex.ItemIndex]:=V;
-  end;
-  TargetChanged(nil);
+  if FDoc=nil then Exit;
+  Color:=(SelectedColor and $FF000000) or (Color and $FFFFFF);
+  if Color=SelectedColor then Exit;
+  L:=FDoc.Lines[FIndex];
+  if FOutline then L.OutlineColor:=Color else L.Color:=Color;
+  FDoc.Lines[FIndex]:=L; RefreshValues;
   if Assigned(FOnChange) then FOnChange(Self);
 end;
-
 procedure TGraphStylePanel.StyleChanged(Sender:TObject);
-var L:TLineStyle; V:TSeriesStyle; Transparency:Double;
+var I:Integer; L:TLineStyle;
 begin
-  if FBusy or (FDoc=nil) or (FIndex.ItemIndex<0) then Exit;
-  if FMode.ItemIndex=0 then
-  begin
-    L:=FDoc.Lines[FIndex.ItemIndex];
-    L.Kind:=FLineKind.ItemIndex;
-    L.Width:=FLineWidth.Position/10;
-    L.OutlineWidth:=FOutlineWidth.Position/10;
-    FDoc.Lines[FIndex.ItemIndex]:=L;
-    FLineWidthLabel.Caption:=Format('線太さ %.1f',[L.Width]);
-    FOutlineWidthLabel.Caption:=Format('縁取り太さ %.1f',[L.OutlineWidth]);
-  end
-  else
-  begin
-    if not TryStrToFloat(FTransparency.Text,Transparency,TFormatSettings.Invariant) or
-      (Transparency<0) or (Transparency>100) then
-    begin
-      FTransparency.Font.Color:=$008080FF;
-      if Assigned(FOnChange) then FOnChange(Self);
-      Exit;
-    end;
-    FTransparency.Font.Color:=$00EEEEEE;
-    V:=FDoc.Series[FIndex.ItemIndex];
-    V.Transparency:=Transparency;
-    V.Marker:=FMarker.ItemIndex;
-    FDoc.Series[FIndex.ItemIndex]:=V;
-  end;
-  if Assigned(FOnChange) then FOnChange(Self);
+  if FBusy or (FDoc=nil) then Exit;
+  I:=TControl(Sender).Tag mod 6; L:=FDoc.Lines[I];
+  if Sender=FKinds[I] then L.Kind:=FKinds[I].ItemIndex
+  else if Sender=FWidths[I] then L.Width:=FWidths[I].Position/10
+  else L.OutlineWidth:=FOutlineWidths[I].Position/10;
+  FDoc.Lines[I]:=L;
+  // 操作中は対象行の文字だけを更新し、全行の再配置を避ける。
+  FLabels[I].Caption:=FRowCaptions[I]+Format('  %.1f',[L.Width]);
+  FWidths[I].Hint:=Format('線太さ %.1f',[L.Width]);
+  FOutlineWidths[I].Hint:=Format('縁取り太さ %.1f',[L.OutlineWidth]);
+  FWidthChanging:=Sender is THorizontalTrackBarControl;
+  try
+    if Assigned(FOnChange) then FOnChange(Self);
+  finally FWidthChanging:=False; end;
 end;
-
+procedure TGraphStylePanel.WidthReleased(Sender:TObject; Button:TMouseButton;
+  Shift:TShiftState; X,Y:Integer);
+begin
+  if (Button=mbLeft) and Assigned(FOnEditFinished) then FOnEditFinished(Self);
+end;
 procedure TGraphStylePanel.DrawLineKind(Control:TWinControl; Index:Integer;
   Rect:TRect; State:TOwnerDrawState);
 var C:TCanvas; X,Y,EndX,LengthOn,LengthOff:Integer;
 begin
-  C:=FLineKind.Canvas;
+  C:=TComboBox(Control).Canvas;
   if odSelected in State then C.Brush.Color:=$00613F20 else C.Brush.Color:=$00303030;
   C.FillRect(Rect); C.Font.Color:=$00EEEEEE;
-  if (Index<0) or (Index>=FLineKind.Items.Count) then Exit;
+  if (Index<0) or (Index>=TComboBox(Control).Items.Count) then Exit;
   if Index=0 then
-  begin C.TextOut(Rect.Left+12,Rect.Top+5,'なし'); Exit; end;
+  begin C.TextOut(Rect.Left+4,Rect.Top+5,'なし'); Exit; end;
   Y:=(Rect.Top+Rect.Bottom) div 2;
-  X:=Rect.Left+12; EndX:=Rect.Right-58;
+  C.Font.Assign(TComboBox(Control).Font);
+  X:=Rect.Left+C.TextWidth(TComboBox(Control).Items[Index])+12; EndX:=Rect.Right-4;
   C.Pen.Color:=$00EEEEEE; C.Pen.Style:=psSolid; C.Pen.Width:=2;
   // 幅2のGDIペンではpsDash/psDotが実線になるため、間隔を自前で描く。
   case Index of
@@ -254,18 +204,11 @@ begin
       end;
   end;
   C.Pen.Width:=1;
-  C.TextOut(Rect.Right-50,Rect.Top+5,FLineKind.Items[Index]);
+  C.TextOut(Rect.Left+4,Rect.Top+5,TComboBox(Control).Items[Index]);
 end;
 
 procedure TGraphStylePanel.RefreshValues;
-begin SelectIndex(nil); end;
-
+begin Load(FDoc); end;
 procedure TGraphStylePanel.Apply;
-var Value:Double;
-begin
-  if (FMode.ItemIndex=1) and
-    (not TryStrToFloat(FTransparency.Text,Value,TFormatSettings.Invariant) or
-      (Value<0) or (Value>100)) then
-    raise EConvertError.Create('透明度は0～100の数値で入力してください。');
-end;
+begin end;
 end.

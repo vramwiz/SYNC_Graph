@@ -29,7 +29,7 @@ begin
     begin
       S:=TJSONObject.Create; A.AddElement(S);
       Number(S,'line',Doc.Series[I].LineColor); Number(S,'fill',Doc.Series[I].FillColor);
-      Number(S,'transparency',Doc.Series[I].Transparency); Number(S,'marker',Doc.Series[I].Marker);
+      Number(S,'transparency',Doc.Series[I].Transparency); Number(S,'marker',Doc.Series[I].Marker); Number(S,'lineKind',Doc.Series[I].LineKind);
     end;
     A:=TJSONArray.Create; O.AddPair('text',A);
     for R:=Low(TTextRole) to High(TTextRole) do
@@ -114,6 +114,7 @@ begin
           Result.Series[I].LineColor:=Trunc(N(S,'line',Palette(I),0,$FFFFFFFF));
           Result.Series[I].FillColor:=Trunc(N(S,'fill',Palette(I),0,$FFFFFFFF));
           Result.Series[I].Transparency:=N(S,'transparency',0,0,100);
+          Result.Series[I].LineKind:=Trunc(N(S,'lineKind',1,1,3));
           Result.Series[I].Marker:=Trunc(N(S,'marker',0,0,2));
         end;
       end;
@@ -131,7 +132,7 @@ begin
         Result.TextStyles[R].Bold:=N(S,'bold',0,0,1)=1;
         Result.TextStyles[R].Italic:=N(S,'italic',0,0,1)=1;
         Result.TextStyles[R].OutlineColor:=Trunc(N(S,'outlineColor',$FF000000,0,$FFFFFFFF));
-        Result.TextStyles[R].OutlineWidth:=N(S,'outlineWidth',0,0,30);
+        Result.TextStyles[R].OutlineWidth:=N(S,'outlineWidth',1,0,30);
         Result.TextStyles[R].OutlineBlur:=N(S,'outlineBlur',0,0,30);
         Result.TextStyles[R].ShadowColor:=Trunc(N(S,'shadowColor',$B0000000,0,$FFFFFFFF));
         Result.TextStyles[R].ShadowX:=N(S,'shadowX',0,-100,100);
@@ -148,7 +149,7 @@ begin
         S:=A.Items[I] as TJSONObject;
         Result.Lines[I].Kind:=Trunc(N(S,'kind',1,0,3));
         Result.Lines[I].Color:=Trunc(N(S,'color',$FFCCCCCC,0,$FFFFFFFF));
-        Result.Lines[I].Width:=N(S,'width',2,0.1,50);
+        Result.Lines[I].Width:=N(S,'width',2,0,50);
         Result.Lines[I].OutlineColor:=Trunc(N(S,'outlineColor',$FF000000,0,$FFFFFFFF));
         Result.Lines[I].OutlineWidth:=N(S,'outlineWidth',0,0,30);
         end;

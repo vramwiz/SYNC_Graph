@@ -12,7 +12,7 @@ procedure DrawCartesian(P:TGraphPainter; const Shared:TGraphShared;
   const Values:TGraphValues; const Animation:TGraphAnimation);
 var D:TGraphDocument; S:TGraphScale; B:TRectF; R,C,I:Integer;
   T,V,CurrentValue,Base,Top,Shape,CellAlpha,NameAlpha,UnitSize,Width,Start:Double;
-  A,Q,Prev,PointNow:TPointF; PosSum,NegSum:TArray<Double>; Style:TSeriesStyle;
+  A,Q,Prev,PointNow:TPointF; PosSum,NegSum:TArray<Double>; Style:TSeriesStyle; SeriesLine:TLineStyle;
   function Map(Category,Value:Double):TPointF;
   var F:Double;
   begin
@@ -37,6 +37,7 @@ begin
   for R:=0 to D.Rows-1 do
   begin
     Style:=D.Series[R]; NameAlpha:=0;
+    SeriesLine:=D.Lines[4]; SeriesLine.Kind:=Style.LineKind; SeriesLine.Color:=Style.LineColor;
     for C:=0 to D.Columns-1 do
     begin
       V:=Values[R,C]; Base:=0;
@@ -57,7 +58,7 @@ begin
         begin
           A:=Map(Start,Base); Q:=Map(Start+Width*0.92,Top);
           P.Box(RectF(Min(A.X,Q.X),Min(A.Y,Q.Y),Max(A.X,Q.X),Max(A.Y,Q.Y)),
-            Style.FillColor,Style.LineColor,(1-Style.Transparency/100)*CellAlpha);
+            Style.FillColor,D.Lines[4].Color,(1-Style.Transparency/100)*CellAlpha);
           PointNow:=Map(Start+Width/2,Top);
           P.Text(FormatGraphValue(CurrentValue,D.ValueFormat),trValue,
             2+MaxGraphRows+R*MaxGraphColumns+C,PointF(PointNow.X,PointNow.Y-8),CellAlpha);
@@ -68,11 +69,11 @@ begin
         if D.Columns=1 then T:=0.5 else T:=C/(D.Columns-1);
         PointNow:=Map(T,CurrentValue);
         if (C>0) and (CellAlpha>0) then
-          P.Path([Prev,PointNow],False,0,Style.LineColor,
+          P.Line(Prev,PointNow,SeriesLine,
             (1-Style.Transparency/100)*CellAlpha);
         if CellAlpha>0 then
         begin
-          P.Marker(PointNow,Style.Marker,Style.FillColor,
+          P.Marker(PointNow,Style.Marker,Style.LineColor,
             (1-Style.Transparency/100)*CellAlpha);
           P.Text(FormatGraphValue(CurrentValue,D.ValueFormat),trValue,
             2+MaxGraphRows+R*MaxGraphColumns+C,
@@ -86,7 +87,8 @@ begin
       1: A:=PointF(B.Right+95,B.Top+R*38+30);
       2: A:=PointF(B.Left+R*150+75,B.Top-20);
     else A:=PointF(B.Left+R*150+75,B.Bottom+65); end;
-    P.Marker(PointF(A.X-60,A.Y-8),1,Style.LineColor,NameAlpha);
+    if D.Kind=gkBar then P.Marker(PointF(A.X-60,A.Y-8),1,Style.FillColor,NameAlpha)
+    else P.Marker(PointF(A.X-60,A.Y-8),1,Style.LineColor,NameAlpha);
     P.Text(ElementName(Shared.Names,R),trName,2+R,A,NameAlpha);
   end;
 end;

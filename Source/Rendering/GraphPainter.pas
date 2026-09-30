@@ -5,8 +5,20 @@ interface
 uses System.Types, System.UITypes, System.Skia, System.Generics.Collections, GraphModel;
 type
   TGraphLabel = record ID:Integer; Role:TTextRole; Bounds:TRectF; end;
+  TGraphTextCommand = record
+    Value:string;
+    Role:TTextRole;
+    ID:Integer;
+    Position:TPointF;
+    Alpha:Single;
+  end;
   TGraphPainter = class
+  private
+    FTexts:TList<TGraphTextCommand>;
+    procedure DrawText(const Value:string; Role:TTextRole; ID:Integer;
+      const Position:TPointF; Alpha:Single);
   public
+    // 呼出側のSurfaceから受け取る参照。Docは借用し、Labels・文字キューは本クラスが所有する。
     Canvas: ISkCanvas;
     Doc: TGraphDocument;
     Labels: TList<TGraphLabel>;
@@ -21,19 +33,20 @@ type
     procedure Marker(const P:TPointF; Kind:Integer; Color:TAlphaColor; Alpha:Single);
     procedure Text(const Value:string; Role:TTextRole; ID:Integer;
       const Position:TPointF; Alpha:Single=1);
+    procedure FlushText;
     function Paint(Color:TAlphaColor; Alpha:Single=1):ISkPaint;
   end;
 implementation
-uses System.Math;
+uses System.Math, GraphFonts;
 
 constructor TGraphPainter.Create(const ACanvas:ISkCanvas; ADoc:TGraphDocument; AOpacity:Single);
 begin
   inherited Create; Canvas:=ACanvas; Doc:=ADoc; Opacity:=AOpacity;
-  Labels:=TList<TGraphLabel>.Create;
+  Labels:=TList<TGraphLabel>.Create; FTexts:=TList<TGraphTextCommand>.Create;
   OnlyLabelID:=-1; ExcludeLabelID:=-1;
 end;
 destructor TGraphPainter.Destroy;
-begin Labels.Free; inherited; end;
+begin FTexts.Free; Labels.Free; inherited; end;
 
 function TGraphPainter.Paint(Color:TAlphaColor; Alpha:Single):ISkPaint;
 begin
@@ -46,7 +59,7 @@ procedure TGraphPainter.Line(const A,B:TPointF; const Style:TLineStyle; Alpha:Si
 var P:ISkPaint;
 begin
   if OnlyLabelID>=0 then Exit;
-  if (Style.Kind=0) or (Alpha<=0) then Exit;
+  if (Style.Kind=0) or (Style.Width<=0) or (Alpha<=0) then Exit;
   P:=Paint(Style.Color,Alpha); P.Style:=TSkPaintStyle.Stroke; P.StrokeWidth:=Style.Width;
   if Style.Kind=2 then P.PathEffect:=TSkPathEffect.MakeDash([8,5],0);
   if Style.Kind=3 then P.PathEffect:=TSkPathEffect.MakeDash([2,4],0);
@@ -74,7 +87,7 @@ begin
   if Closed then Canvas.DrawPath(Shape,Paint(Fill,Alpha));
   Style:=Doc.Lines[4];
   if Doc.Kind=gkPie then Style:=Doc.Lines[5];
-  if Style.Kind=0 then Exit;
+  if (Style.Kind=0) or (Style.Width<=0) or ((Stroke shr 24)=0) then Exit;
   P:=Paint(Stroke,Alpha); P.Style:=TSkPaintStyle.Stroke; P.StrokeWidth:=Style.Width;
   if Style.Kind=2 then P.PathEffect:=TSkPathEffect.MakeDash([8,5],0);
   if Style.Kind=3 then P.PathEffect:=TSkPathEffect.MakeDash([2,4],0);
@@ -101,8 +114,37 @@ end;
 
 procedure TGraphPainter.Text(const Value:string; Role:TTextRole; ID:Integer;
   const Position:TPointF; Alpha:Single);
-var S:TTextStyle; Font:ISkFont; Face:ISkTypeface; FS:TSkFontStyle;
+var Command:TGraphTextCommand;
+begin
+  if (Value='') or (Alpha<=0) then Exit;
+  if ((OnlyLabelID>=0) and (ID<>OnlyLabelID)) or (ID=ExcludeLabelID) and (ExcludeLabelID>=0) then Exit;
+  // 文字の座標・透明度を保持し、全グラフ形状の描画後にまとめて重ねる。
+  Command.Value:=Value; Command.Role:=Role; Command.ID:=ID;
+  Command.Position:=Position; Command.Alpha:=Alpha; FTexts.Add(Command);
+end;
+procedure TGraphPainter.FlushText;
+var Command:TGraphTextCommand;
+begin
+  // Canvasの変換・クリップが有効な間に呼ぶ。キューは1フレームだけ保持する。
+  try
+    for Command in FTexts do
+      DrawText(Command.Value,Command.Role,Command.ID,Command.Position,Command.Alpha);
+  finally FTexts.Clear; end;
+end;
+procedure TGraphPainter.DrawText(const Value:string; Role:TTextRole; ID:Integer;
+  const Position:TPointF; Alpha:Single);
+var S:TTextStyle; FS:TSkFontStyle; Runs:TArray<TGraphFontRun>; Run:TGraphFontRun;
   P:ISkPaint; X,Y,W:Single; L:TGraphLabel; Weight:Integer; Slant:TSkFontSlant;
+  procedure DrawRuns(DX,DY:Single; const Paint:ISkPaint);
+  var R:TGraphFontRun; Offset:Single;
+  begin
+    Offset:=0;
+    for R in Runs do
+    begin
+      Canvas.DrawSimpleText(R.Text,X+DX+Offset,Y+DY,R.Font,Paint);
+      Offset:=Offset+R.Width;
+    end;
+  end;
 begin
   if (Value='') or (Alpha<=0) then Exit;
   if ((OnlyLabelID>=0) and (ID<>OnlyLabelID)) or
@@ -111,23 +153,23 @@ begin
   Slant:=TSkFontSlant.Upright; if S.Italic then Slant:=TSkFontSlant.Italic;
   FS:=TSkFontStyle.Create(Weight,5,Slant);
   if (ID>=0) and (ID<Length(Doc.LabelScales)) then S.Size:=S.Size*Doc.LabelScales[ID];
-  Face:=TSkTypeface.MakeFromName(S.Font,FS); Font:=TSkFont.Create(Face,S.Size);
-  W:=Font.MeasureText(Value); X:=Position.X-W/2; Y:=Position.Y;
+  Runs:=GraphFontRuns(S.Font,Value,FS,S.Size);
+  W:=0; for Run in Runs do W:=W+Run.Width; X:=Position.X-W/2; Y:=Position.Y;
   if (ID>=0) and (ID<Length(Doc.Offsets)) then
   begin X:=X+Doc.Offsets[ID].X; Y:=Y+Doc.Offsets[ID].Y; end;
   if (S.ShadowX<>0) or (S.ShadowY<>0) or (S.ShadowBlur>0) then
   begin
     P:=Paint(S.ShadowColor,Alpha);
     if S.ShadowBlur>0 then P.MaskFilter:=TSkMaskFilter.MakeBlur(TSkBlurStyle.Normal,S.ShadowBlur);
-    Canvas.DrawSimpleText(Value,X+S.ShadowX,Y+S.ShadowY,Font,P);
+    DrawRuns(S.ShadowX,S.ShadowY,P);
   end;
   if S.OutlineWidth>0 then
   begin
     P:=Paint(S.OutlineColor,Alpha); P.Style:=TSkPaintStyle.Stroke; P.StrokeWidth:=2*S.OutlineWidth;
     if S.OutlineBlur>0 then P.MaskFilter:=TSkMaskFilter.MakeBlur(TSkBlurStyle.Normal,S.OutlineBlur);
-    Canvas.DrawSimpleText(Value,X,Y,Font,P);
+    DrawRuns(0,0,P);
   end;
-  Canvas.DrawSimpleText(Value,X,Y,Font,Paint(S.Color,Alpha));
+  DrawRuns(0,0,Paint(S.Color,Alpha));
   if ID>=0 then
   begin L.ID:=ID; L.Role:=Role; L.Bounds:=RectF(X,Y-S.Size,W+X,Y+S.Size*0.25); Labels.Add(L); end;
 end;

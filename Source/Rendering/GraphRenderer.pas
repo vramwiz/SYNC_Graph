@@ -50,6 +50,8 @@ begin
     P.Line(PointF(B.Left,B.Bottom),B.TopLeft,Doc.Lines[3]);
     P.Text(Shared.Title,trTitle,0,PointF(B.CenterPoint.X,B.Top-55));
     P.Text(Shared.Units,trUnit,1,PointF(B.Left-40,B.Top-15));
+    // 文字は全形状の後に描く。拡大変換を解除する前なので文字も同じ座標系に従う。
+    P.FlushText;
     Labels:=P.Labels.ToArray;
     SetLength(Result,NativeInt(Width)*Height*4);
     // ホストABIは非乗算RGBA。Skia内部の乗算アルファから明示的に変換する。

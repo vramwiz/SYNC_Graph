@@ -27,7 +27,7 @@ type
   TSeriesStyle = record
     LineColor, FillColor: TAlphaColor;
     Transparency: Single;
-    Marker: Integer;
+    Marker, LineKind: Integer;
   end;
   TGraphShared = record
     Title, Names, Units, Values: string;
@@ -85,6 +85,7 @@ begin
   begin
     TextStyles[Role].Font := 'Yu Gothic UI';
     TextStyles[Role].Size := 28;
+    TextStyles[Role].OutlineWidth := 1;
     TextStyles[Role].Color := $FFFFFFFF;
     TextStyles[Role].OutlineColor := $FF000000;
     TextStyles[Role].ShadowColor := $B0000000;
@@ -113,6 +114,7 @@ begin
     SetLength(Series, Max(Rows, Columns));
   for I := OldCount to High(Series) do
   begin
+    Series[I].LineKind := 1;
     Series[I].LineColor := Palette(I);
     Series[I].FillColor := Palette(I);
   end;
