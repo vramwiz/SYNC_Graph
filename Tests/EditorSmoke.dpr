@@ -158,14 +158,13 @@ begin
       if (Swatch=nil) or (Slider=nil) or (Kind=nil) then raise Exception.Create('Data line row is missing');
       if not Slider.Visible or (Swatch.Top<>Slider.Top) or (Slider.Top<>Kind.Top) then
         raise Exception.Create('Data line tools are not in one row');
-      if (Swatch.Visible<>(not (K in [gkLine,gkRadar]))) or (Kind.Visible<>(K<>gkLine)) then
+      if Swatch.Visible or (Kind.Visible<>(K<>gkLine)) then
         raise Exception.Create('Line element color/kind was duplicated');
       if K<>gkLine then
       begin
-        Swatch.OnClick(Swatch); Panel.SetSelectedColor($FF224466);
         Kind.ItemIndex:=3; Kind.OnChange(Kind);
-        if (Doc.Lines[Index].Color<>$FF224466) or (Doc.Lines[Index].Kind<>3) then
-          raise Exception.Create('Data line color or kind was not applied');
+        if Doc.Lines[Index].Kind<>3 then
+          raise Exception.Create('Data line kind was not applied');
       end;
       Slider.Position:=85;
       if Abs(Doc.Lines[Index].Width-8.5)>0.001 then raise Exception.Create('Data line width was not applied');
@@ -175,7 +174,7 @@ begin
 end;
 procedure CheckColorStyles(Owner:TComponent);
 var Panel:TGraphColorStylePanel; Doc,Restored:TGraphDocument;
-  K:TGraphKind; I,Count:Integer; Control:TComponent; Swatch:TPanel; Combo:TDarkComboBox;
+  K:TGraphKind; I,Count,Expected:Integer; Control:TComponent; Swatch:TPanel; Combo:TDarkComboBox; OldColor:Cardinal;
 begin
   Doc:=TGraphDocument.Create; Panel:=TGraphColorStylePanel.Create(Owner);
   try
@@ -189,15 +188,24 @@ begin
         if Control is TPanel then
         begin Inc(Count); Swatch:=TPanel(Control); end;
         if Control is TDarkComboBox then
-          if TDarkComboBox(Control).Visible<>(K=gkLine) then
+          if Control.Name='FillPattern' then
+          begin
+            if TDarkComboBox(Control).Visible=(K=gkLine) then
+              raise Exception.Create('Fill selector visibility is wrong');
+          end
+          else if TDarkComboBox(Control).Visible<>(K=gkLine) then
             raise Exception.Create('Line-only style selector visibility is wrong');
       end;
-      if Count<>Doc.SeriesCount then raise Exception.Create('Swatch count is wrong');
+      Expected:=Doc.SeriesCount; if K<>gkLine then Expected:=Expected*2;
+      if Count<>Expected then raise Exception.Create('Swatch count is wrong');
+      OldColor:=Doc.Series[Doc.SeriesCount-1].LineColor;
       Swatch.OnClick(Swatch); Panel.SetSelectedColor($FF123456);
+      if (K<>gkLine) and (Doc.Series[Doc.SeriesCount-1].LineColor<>OldColor) then
+        raise Exception.Create('Fill editing changed border color');
       if Panel.SelectedColor<>$FF123456 then raise Exception.Create('Selected swatch color is wrong');
       if K=gkLine then
         for I:=0 to Panel.ComponentCount-1 do
-          if Panel.Components[I] is TDarkComboBox then
+          if (Panel.Components[I] is TDarkComboBox) and (Panel.Components[I].Name<>'FillPattern') then
           begin
             Combo:=TDarkComboBox(Panel.Components[I]); Combo.ItemIndex:=2; Combo.OnChange(Combo);
           end;
@@ -210,7 +218,16 @@ begin
     Doc.Kind:=gkRadar; Doc.ResizeStructure(1,1); Panel.Load(Doc);
     Doc.ResizeStructure(2,9); Panel.Load(Doc);
     if Doc.Series[8].FillColor<>$FF123456 then raise Exception.Create('Hidden data color was lost');
-    Writeln('PASS graph-dependent swatches, line selectors and style persistence');
+    for I:=0 to Panel.ComponentCount-1 do
+      if Panel.Components[I].Name='FillPattern' then
+      begin
+        Combo:=TDarkComboBox(Panel.Components[I]); Combo.ItemIndex:=0; Combo.OnChange(Combo);
+      end;
+    Restored:=LoadGraph(SaveGraph(Doc));
+    try
+      if Restored.Series[0].FillPattern<>0 then raise Exception.Create('Fill pattern was not saved');
+    finally Restored.Free; end;
+    Writeln('PASS independent fill and border colors, fill selector and style persistence');
   finally Panel.Free; Doc.Free; end;
 end;
 var StoredValues:UTF8String='0,0,0\n0,0,0\n0,0,0';
@@ -345,7 +362,7 @@ begin
       Colors:=TGraphSettingsPane(FindPicker(F).Owner).ColorPanel;
       Swatch:=nil;
       for I:=0 to Colors.ComponentCount-1 do
-        if Colors.Components[I] is TPanel then
+        if (Colors.Components[I] is TPanel) and (TPanel(Colors.Components[I]).Tag=1) then
         begin Swatch:=TPanel(Colors.Components[I]); Break; end;
       if Swatch=nil then raise Exception.Create('Series swatches are missing');
       Swatch.OnClick(Swatch);

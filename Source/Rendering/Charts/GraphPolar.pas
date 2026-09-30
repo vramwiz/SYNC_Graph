@@ -15,13 +15,9 @@ var D:TGraphDocument; Center:TPointF; Radius,Angle,Start,Sweep,Total,F,T:Double;
   R,C,I,Steps,Pass:Integer; Points:TArray<TPointF>; S:TGraphScale; Style:TSeriesStyle; Edge:TLineStyle; A,Q:TPointF;
   function Polar(Degrees,Distance:Double):TPointF;
   begin Result:=PointF(Center.X+Cos(DegToRad(Degrees))*Distance,Center.Y+Sin(DegToRad(Degrees))*Distance); end;
-begin
-  D:=P.Doc; Center:=D.Bounds.CenterPoint;
-  Radius:=Min(D.Bounds.Width,D.Bounds.Height)/2;
-  if D.Kind=gkRadar then
+  procedure DrawRadarAxes;
+  var R,I:Integer; T,F,Angle:Double; A:TPointF;
   begin
-    if D.Rows<3 then raise EConvertError.Create('N角形は要素数を3以上にしてください。');
-    S:=CalculateScale(D,Values);
     T:=Ceil(S.Minimum/S.Step)*S.Step; I:=0;
     while (T<=S.Maximum) and (I<=1000) do
     begin
@@ -29,6 +25,9 @@ begin
       for R:=0 to D.Rows-1 do
         P.Line(Polar(-90+D.Rotation+R*360/D.Rows,Radius*F),
           Polar(-90+D.Rotation+(R+1)*360/D.Rows,Radius*F),D.Lines[2]);
+      // 目盛値は最初の放射軸にだけ添え、各軸に重複して配置しない。
+      A:=Polar(-90+D.Rotation,Radius*F);
+      P.Text(FormatFloat('0.##',T,TFormatSettings.Invariant),trValue,-1,PointF(A.X-24,A.Y));
       T:=T+S.Step; Inc(I);
     end;
     for R:=0 to D.Rows-1 do
@@ -38,15 +37,26 @@ begin
       F:=1.15; if D.NameLayout=1 then F:=0.85 else if D.NameLayout=2 then F:=1.3;
       P.Text(ElementName(Shared.Names,R),trName,2+R,Polar(Angle,Radius*F));
     end;
+  end;
+begin
+  D:=P.Doc; Center:=D.Bounds.CenterPoint;
+  Radius:=Min(D.Bounds.Width,D.Bounds.Height)/2;
+  if D.Kind=gkRadar then
+  begin
+    if D.Rows<3 then raise EConvertError.Create('N角形は要素数を3以上にしてください。');
+    S:=CalculateScale(D,Values);
     // 面、輪郭、値の順に全データを描き、後の面が先の輪郭を覆うのを防ぐ。
     for Pass:=0 to 2 do
+    begin
+    // 半透明の面の後に軸・目盛りを重ね、データ数が増えても基準線を見失わない。
+    if Pass=1 then DrawRadarAxes;
     for C:=0 to D.Columns-1 do
     begin
       SetLength(Points,D.Rows); Style:=D.Series[C];
-      Edge:=D.Lines[4]; Edge.Color:=Style.FillColor;
-      // 手前の面だけを自動透過し、既存透明度・進行フェードは別に乗算する。
-      // 輪郭を透過補正しないことで、重なっても各データの形を識別できる。
-      FillAlpha:=1; if C>0 then FillAlpha:=0.4;
+      Edge:=D.Lines[4]; Edge.Color:=Style.LineColor;
+      // 全データの面を同じ不透明度にし、最背面も他のデータと対等に混色する。
+      // 既存透明度・進行フェードは別に乗算し、輪郭には自動透過補正を適用しない。
+      FillAlpha:=0.4;
       AllStarted:=True;
       for R:=0 to D.Rows-1 do
       begin
@@ -62,7 +72,7 @@ begin
         PairAlpha:=Min(Animation.CellOpacity(R-1,C,D.Rows,D.Columns),
           Animation.CellOpacity(R,C,D.Rows,D.Columns))*(1-Style.Transparency/100);
         if (Pass=0) and (PairAlpha>0) then
-          P.Path([Center,Points[R-1],Points[R]],True,Style.FillColor,0,PairAlpha*FillAlpha);
+          P.Path([Center,Points[R-1],Points[R]],True,Style.FillColor,0,PairAlpha*FillAlpha,Style.FillPattern);
         if Pass=1 then P.Line(Points[R-1],Points[R],Edge,PairAlpha);
       end;
       if AllStarted then
@@ -70,7 +80,7 @@ begin
         PairAlpha:=Min(Animation.CellOpacity(D.Rows-1,C,D.Rows,D.Columns),
           Animation.CellOpacity(0,C,D.Rows,D.Columns))*(1-Style.Transparency/100);
         if Pass=0 then
-          P.Path([Center,Points[High(Points)],Points[0]],True,Style.FillColor,0,PairAlpha*FillAlpha);
+          P.Path([Center,Points[High(Points)],Points[0]],True,Style.FillColor,0,PairAlpha*FillAlpha,Style.FillPattern);
         if Pass=1 then P.Line(Points[High(Points)],Points[0],Edge,PairAlpha);
       end;
       if Pass=2 then
@@ -82,6 +92,7 @@ begin
           D.ValueFormat),trValue,2+MaxGraphRows+R*MaxGraphColumns+C,
           Points[R],CellAlpha);
       end;
+    end;
     end;
   end else
   begin
@@ -103,8 +114,8 @@ begin
       begin
         SetLength(Points,Steps+2); Points[0]:=Center;
         for I:=0 to Steps do Points[I+1]:=Polar(Start+Sweep*Shape*I/Steps,Radius);
-        P.Path(Points,True,Style.FillColor,D.Lines[5].Color,
-          (1-Style.Transparency/100)*CellAlpha);
+        P.Path(Points,True,Style.FillColor,Style.LineColor,
+          (1-Style.Transparency/100)*CellAlpha,Style.FillPattern);
         Angle:=Start+Sweep*Shape/2; T:=0.65;
         if D.NameLayout<>0 then T:=1.18;
         A:=Polar(Angle,Radius*T);

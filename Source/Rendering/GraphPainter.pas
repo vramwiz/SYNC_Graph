@@ -28,8 +28,8 @@ type
     destructor Destroy; override;
     procedure Line(const A,B:TPointF; const Style:TLineStyle; Alpha:Single=1);
     procedure Path(const Points:TArray<TPointF>; Closed:Boolean;
-      Fill,Stroke:TAlphaColor; Alpha:Single=1);
-    procedure Box(const R:TRectF; Fill,Stroke:TAlphaColor; Alpha:Single=1);
+      Fill,Stroke:TAlphaColor; Alpha:Single=1; Pattern:Integer=1);
+    procedure Box(const R:TRectF; Fill,Stroke:TAlphaColor; Alpha:Single=1; Pattern:Integer=1);
     procedure Marker(const P:TPointF; Kind:Integer; Color:TAlphaColor; Alpha:Single);
     procedure Text(const Value:string; Role:TTextRole; ID:Integer;
       const Position:TPointF; Alpha:Single=1);
@@ -37,7 +37,7 @@ type
     function Paint(Color:TAlphaColor; Alpha:Single=1):ISkPaint;
   end;
 implementation
-uses System.Math, GraphFonts;
+uses System.Math, GraphFonts, GraphPatternFill;
 
 constructor TGraphPainter.Create(const ACanvas:ISkCanvas; ADoc:TGraphDocument; AOpacity:Single);
 begin
@@ -75,7 +75,7 @@ begin
 end;
 
 procedure TGraphPainter.Path(const Points:TArray<TPointF>; Closed:Boolean;
-  Fill,Stroke:TAlphaColor; Alpha:Single);
+  Fill,Stroke:TAlphaColor; Alpha:Single; Pattern:Integer);
 var B:ISkPathBuilder; P:ISkPaint; I:Integer; Shape:ISkPath; Style:TLineStyle;
 begin
   if OnlyLabelID>=0 then Exit;
@@ -84,7 +84,7 @@ begin
   for I:=1 to High(Points) do B.LineTo(Points[I]);
   if Closed then B.Close;
   Shape:=B.Detach;
-  if Closed then Canvas.DrawPath(Shape,Paint(Fill,Alpha));
+  if Closed then DrawPatternFill(Canvas,Shape,Paint(Fill,Alpha),Pattern);
   Style:=Doc.Lines[4];
   if Doc.Kind=gkPie then Style:=Doc.Lines[5];
   if (Style.Kind=0) or (Style.Width<=0) or ((Stroke shr 24)=0) then Exit;
@@ -100,9 +100,9 @@ begin
   Canvas.DrawPath(Shape,P);
 end;
 
-procedure TGraphPainter.Box(const R:TRectF; Fill,Stroke:TAlphaColor; Alpha:Single);
+procedure TGraphPainter.Box(const R:TRectF; Fill,Stroke:TAlphaColor; Alpha:Single; Pattern:Integer);
 begin
-  Path([R.TopLeft,PointF(R.Right,R.Top),R.BottomRight,PointF(R.Left,R.Bottom)],True,Fill,Stroke,Alpha);
+  Path([R.TopLeft,PointF(R.Right,R.Top),R.BottomRight,PointF(R.Left,R.Bottom)],True,Fill,Stroke,Alpha,Pattern);
 end;
 
 procedure TGraphPainter.Marker(const P:TPointF; Kind:Integer; Color:TAlphaColor; Alpha:Single);

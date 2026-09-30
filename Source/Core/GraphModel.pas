@@ -27,7 +27,7 @@ type
   TSeriesStyle = record
     LineColor, FillColor: TAlphaColor;
     Transparency: Single;
-    Marker, LineKind: Integer;
+    Marker, LineKind, FillPattern: Integer; // 0なし・1ベタ・2斜線・3逆斜線・4交差線。
   end;
   TGraphShared = record
     Title, Names, Units, Values: string;
@@ -115,6 +115,7 @@ begin
   for I := OldCount to High(Series) do
   begin
     Series[I].LineKind := 1;
+    Series[I].FillPattern := 1;
     Series[I].LineColor := Palette(I);
     Series[I].FillColor := Palette(I);
   end;

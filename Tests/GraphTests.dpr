@@ -2,7 +2,7 @@
 {$APPTYPE CONSOLE}
 
 // 実際のグラフ専用ユニットを使い、値・保存・透過・4種の描画を検証する。
-uses System.SysUtils, System.Types, System.Skia, GraphModel, GraphValues,
+uses System.SysUtils, System.Types, System.Skia, System.JSON, GraphModel, GraphValues,
   GraphSettings, GraphFonts, GraphAnimation, GraphRenderer, GraphPainter, GraphComposite;
 var Count:Integer;
 procedure Check(Condition:Boolean; const Name:string);
@@ -81,21 +81,26 @@ begin
     Doc.Minimum:='0'; Doc.Maximum:='100'; Doc.Interval:='100'; Doc.ValueFormat:='';
     for I:=0 to High(Doc.Lines) do Doc.Lines[I].Kind:=0;
     Doc.Series[0].FillColor:=$FFFF0000; Doc.Series[1].FillColor:=$FF0000FF;
+    Doc.Series[0].LineColor:=$FFFF0000; Doc.Series[1].LineColor:=$FF0000FF;
     Shared:=DefaultShared; Shared.Title:=''; Shared.Units:='';
     Shared.Names:='A'#13#10'B'#13#10'C'#13#10'D';
     Shared.Values:='50,100'#13#10'50,100'#13#10'50,100'#13#10'50,100';
     Animation:=Default(TGraphAnimation);
     Pixels:=RenderGraph(Doc,Shared,Animation,320,240,Labels);
     Inside:=(140*320+170)*4; Outside:=(125*320+215)*4;
-    Check(Pixels[Inside+3]=255,'radar bottom fill remains opaque');
-    Check((Abs(Integer(Pixels[Inside])-153)<=2) and
-      (Abs(Integer(Pixels[Inside+2])-102)<=2),'radar overlapping fills blend at 40 percent');
+    Check(Abs(Integer(Pixels[Inside+3])-163)<=2,'radar overlapping fills keep transparent background');
+    Check((Abs(Integer(Pixels[Inside])-96)<=2) and
+      (Abs(Integer(Pixels[Inside+2])-159)<=2),'radar overlapping fills blend at 40 percent');
     Check(Abs(Integer(Pixels[Outside+3])-102)<=2,'radar upper fill alone has 40 percent opacity');
     Doc.Lines[4].Kind:=1; Doc.Lines[4].Width:=6;
     Pixels:=RenderGraph(Doc,Shared,Animation,320,240,Labels);
     Edge:=(135*320+185)*4;
     Check((Pixels[Edge]>240) and (Pixels[Edge+2]<10) and (Pixels[Edge+3]=255),
       'radar lower outline stays visible over upper fill in data color');
+    Doc.Lines[0].Kind:=1; Doc.Lines[0].Width:=4; Doc.Lines[0].Color:=$FF00FF00;
+    Pixels:=RenderGraph(Doc,Shared,Animation,320,240,Labels);
+    Edge:=(145*320+160)*4;
+    Check((Pixels[Edge+1]>240) and (Pixels[Edge+3]=255),'radar axes stay clear above overlapping fills');
   finally Doc.Free; end;
 end;
 procedure CheckDataLines;
@@ -112,12 +117,15 @@ begin
       Doc.Kind:=K;
       if K=gkPie then Index:=5 else Index:=4;
       Doc.Lines[Index].Kind:=1; Doc.Lines[Index].Width:=2;
-      Doc.Lines[Index].Color:=$FFFF0000;
+      Doc.Lines[Index].Color:=$FFFF0000; Doc.Series[0].LineColor:=$FFFF0000;
       A:=RenderGraph(Doc,Shared,Animation,320,240,Labels);
       Doc.Lines[Index].Color:=$FF00FF00;
       B:=RenderGraph(Doc,Shared,Animation,320,240,Labels);
-      if K in [gkLine,gkRadar] then Check(CompareMem(@A[0],@B[0],Length(A)),'line uses data color '+IntToStr(Ord(K)))
-      else Check(not CompareMem(@A[0],@B[0],Length(A)),'data outline uses common color '+IntToStr(Ord(K)));
+      Check(CompareMem(@A[0],@B[0],Length(A)),'line uses independent data color '+IntToStr(Ord(K)));
+      Doc.Series[0].LineColor:=$FF00FF00;
+      A:=RenderGraph(Doc,Shared,Animation,320,240,Labels);
+      Check(not CompareMem(@A[0],@B[0],Length(A)),'data border color renders '+IntToStr(Ord(K)));
+      B:=A;
       Doc.Lines[Index].Width:=0;
       with LoadGraph(SaveGraph(Doc)) do
       try Check(Lines[Index].Width=0,'zero line width round trip '+IntToStr(Ord(K))); finally Free; end;
@@ -141,6 +149,74 @@ begin
     end;
   finally Doc.Free; end;
 end;
+procedure CheckFillPatterns;
+var D,E:TGraphDocument; Surface:ISkSurface; P:TGraphPainter;
+  Pixels,Previous:TBytes; I,Pattern,Filled,Solid:Integer; K:TGraphKind; Text:string;
+  Json:TJSONObject; Item:TJSONValue;
+begin
+  D:=TGraphDocument.Create;
+  try
+    D.Kind:=gkBar; D.Lines[4].Width:=0; D.Lines[4].OutlineWidth:=8;
+    Solid:=0; Previous:=nil;
+    for Pattern:=0 to 4 do
+    begin
+      Surface:=TSkSurface.MakeRaster(100,100); Surface.Canvas.Clear(0);
+      P:=TGraphPainter.Create(Surface.Canvas,D,1);
+      try P.Box(RectF(20,20,80,80),$FFFF0000,$FF00FF00,1,Pattern); finally P.Free; end;
+      SetLength(Pixels,100*100*4);
+      Surface.ReadPixels(TSkImageInfo.Create(100,100,TSkColorType.RGBA8888,TSkAlphaType.Unpremul),@Pixels[0],400);
+      Filled:=0;
+      for I:=0 to 9999 do
+        if Pixels[I*4+3]>0 then
+        begin
+          Inc(Filled);
+          if (I mod 100<20) or (I mod 100>=80) or (I div 100<20) or (I div 100>=80) then
+            raise Exception.Create('Pattern escaped shape bounds');
+          if Pixels[I*4+1]<>0 then raise Exception.Create('Width zero still drew border');
+        end;
+      if Pattern=0 then Check(Filled=0,'no fill and zero border leave transparent shape')
+      else if Pattern=1 then begin Solid:=Filled; Check(Solid=3600,'solid fill covers shape'); end
+      else
+      begin
+        Check((Filled>0) and (Filled<Solid),'hatch keeps gaps and stays clipped '+IntToStr(Pattern));
+        Check(not CompareMem(@Pixels[0],@Previous[0],Length(Pixels)),'hatch directions differ '+IntToStr(Pattern));
+      end;
+      Previous:=Copy(Pixels);
+    end;
+    Surface.Canvas.Clear(0); D.Lines[4].Width:=4; D.Lines[4].OutlineWidth:=0;
+    P:=TGraphPainter.Create(Surface.Canvas,D,1);
+    try P.Box(RectF(20,20,80,80),$FFFF0000,$FF00FF00,1,0); finally P.Free; end;
+    Surface.ReadPixels(TSkImageInfo.Create(100,100,TSkColorType.RGBA8888,TSkAlphaType.Unpremul),@Pixels[0],400);
+    Check(Pixels[(50*100+50)*4+3]=0,'no fill keeps shape interior transparent');
+    Check((Pixels[(50*100+20)*4+1]=255) and (Pixels[(50*100+20)*4+3]=255),
+      'no fill preserves independent border');
+    D.Series[0].LineColor:=$FF00FF00; D.Series[0].FillColor:=$FFFF0000;
+    D.Series[0].FillPattern:=0; E:=LoadGraph(SaveGraph(D));
+    try Check((E.Series[0].FillPattern=0) and (E.Series[0].LineColor=$FF00FF00) and
+      (E.Series[0].FillColor=$FFFF0000),'independent colors and no fill round trip'); finally E.Free; end;
+    for K:=gkRadar to gkPie do
+    begin
+      D.Kind:=K; D.Lines[4].Color:=$FF123456; D.Lines[5].Color:=$FF654321;
+      Json:=TJSONObject.ParseJSONValue(SaveGraph(D)) as TJSONObject;
+      try
+        Json.RemovePair('version').Free; Json.AddPair('version',TJSONNumber.Create(2));
+        for Item in Json.GetValue<TJSONArray>('series') do
+          TJSONObject(Item).RemovePair('fillPattern').Free;
+        Text:=Json.ToJSON;
+      finally Json.Free; end;
+      E:=LoadGraph(Text);
+      try
+        Check(E.Series[0].FillPattern=1,'old settings default to solid '+IntToStr(Ord(K)));
+        case K of
+          gkRadar: Check(E.Series[0].LineColor=D.Series[0].FillColor,'old radar border color migration');
+          gkBar: Check(E.Series[0].LineColor=D.Lines[4].Color,'old bar border color migration');
+          gkPie: Check(E.Series[0].LineColor=D.Lines[5].Color,'old pie border color migration');
+          gkLine: Check(E.Series[0].LineColor=D.Series[0].LineColor,'old line color retained');
+        end;
+      finally E.Free; end;
+    end;
+  finally D.Free; end;
+end;
 procedure Run;
 var D,E:TGraphDocument; S:TGraphShared; V:TGraphValues; Scale:TGraphScale;
   A:TGraphAnimation; Pixels,Background:TBytes; Labels:TArray<TGraphLabel>;
@@ -149,7 +225,7 @@ var D,E:TGraphDocument; S:TGraphShared; V:TGraphValues; Scale:TGraphScale;
   TitleWidth,PartialLabelTop,FullLabelTop:Single;
   Solo:TGraphShared; PartialAlpha,FullAlpha:Integer;
 begin
-  CheckTextOnTop; CheckFonts; CheckRadarOverlap; CheckDataLines;
+  CheckTextOnTop; CheckFonts; CheckRadarOverlap; CheckDataLines; CheckFillPatterns;
   D:=TGraphDocument.Create;
   try
     D.ResetBounds(640,480); S:=DefaultShared;

@@ -16,7 +16,7 @@ var O,S:TJSONObject; A:TJSONArray; I:Integer; R:TTextRole;
 begin
   O:=TJSONObject.Create;
   try
-    Number(O,'version',2); Number(O,'kind',Ord(Doc.Kind));
+    Number(O,'version',3); Number(O,'kind',Ord(Doc.Kind));
     Number(O,'rows',Doc.Rows); Number(O,'columns',Doc.Columns);
     Number(O,'x',Doc.Bounds.Left); Number(O,'y',Doc.Bounds.Top);
     Number(O,'width',Doc.Bounds.Width); Number(O,'height',Doc.Bounds.Height);
@@ -28,6 +28,7 @@ begin
     for I:=0 to High(Doc.Series) do
     begin
       S:=TJSONObject.Create; A.AddElement(S);
+      Number(S,'fillPattern',Doc.Series[I].FillPattern);
       Number(S,'line',Doc.Series[I].LineColor); Number(S,'fill',Doc.Series[I].FillColor);
       Number(S,'transparency',Doc.Series[I].Transparency); Number(S,'marker',Doc.Series[I].Marker); Number(S,'lineKind',Doc.Series[I].LineKind);
     end;
@@ -92,7 +93,8 @@ begin
       // 旧キャンバステストの表示設定は、未設定グラフとして安全に移行する。
       if O.GetValue<Double>('version',0)=1 then Exit;
       if (O.GetValue<Double>('version',0)<>0) and
-        (O.GetValue<Double>('version',0)<>2) then
+        (O.GetValue<Double>('version',0)<>2) and
+        (O.GetValue<Double>('version',0)<>3) then
         raise EConvertError.Create('未対応の設定データ版です。');
       Result.Kind:=TGraphKind(Trunc(N(O,'kind',0,0,4)));
       Result.ResizeStructure(Trunc(N(O,'rows',3,1,MaxGraphRows)),Trunc(N(O,'columns',3,1,MaxGraphColumns)));
@@ -115,6 +117,7 @@ begin
           Result.Series[I].FillColor:=Trunc(N(S,'fill',Palette(I),0,$FFFFFFFF));
           Result.Series[I].Transparency:=N(S,'transparency',0,0,100);
           Result.Series[I].LineKind:=Trunc(N(S,'lineKind',1,1,3));
+          Result.Series[I].FillPattern:=Trunc(N(S,'fillPattern',1,0,4));
           Result.Series[I].Marker:=Trunc(N(S,'marker',0,0,2));
         end;
       end;
@@ -154,6 +157,14 @@ begin
         Result.Lines[I].OutlineWidth:=N(S,'outlineWidth',0,0,30);
         end;
       end;
+      // 旧保存の見た目を維持して、共通外周色をデータごとの縁色へ移す。
+      if O.GetValue<Double>('version',0)<3 then
+        for I:=0 to High(Result.Series) do
+          case Result.Kind of
+            gkRadar: Result.Series[I].LineColor:=Result.Series[I].FillColor;
+            gkBar: Result.Series[I].LineColor:=Result.Lines[4].Color;
+            gkPie: Result.Series[I].LineColor:=Result.Lines[5].Color;
+          end;
       if O.GetValue('offsets') is TJSONArray then
       begin
         A:=O.GetValue<TJSONArray>('offsets');

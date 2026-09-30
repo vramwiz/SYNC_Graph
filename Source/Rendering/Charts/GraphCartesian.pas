@@ -58,7 +58,7 @@ begin
         begin
           A:=Map(Start,Base); Q:=Map(Start+Width*0.92,Top);
           P.Box(RectF(Min(A.X,Q.X),Min(A.Y,Q.Y),Max(A.X,Q.X),Max(A.Y,Q.Y)),
-            Style.FillColor,D.Lines[4].Color,(1-Style.Transparency/100)*CellAlpha);
+            Style.FillColor,Style.LineColor,(1-Style.Transparency/100)*CellAlpha,Style.FillPattern);
           PointNow:=Map(Start+Width/2,Top);
           P.Text(FormatGraphValue(CurrentValue,D.ValueFormat),trValue,
             2+MaxGraphRows+R*MaxGraphColumns+C,PointF(PointNow.X,PointNow.Y-8),CellAlpha);

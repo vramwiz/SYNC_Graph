@@ -86,7 +86,7 @@ begin
     Y:=38;
     for I:=0 to 5 do
     begin
-      ShowRow:=True; ElementStyle:=(Doc.Kind in [gkLine,gkRadar]) and (I=4);
+      ShowRow:=True; ElementStyle:=((Doc.Kind<>gkNone) and (I=4)) or ((Doc.Kind=gkPie) and (I=5));
       case I of
         0:begin
           Caption:='X軸・基準線';
