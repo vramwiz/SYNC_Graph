@@ -46,6 +46,7 @@ type
     Series: TArray<TSeriesStyle>;
     Offsets: TArray<TPointF>;
     LabelScales: TArray<Single>;
+    LegendOffsets:array[0..MaxGraphRows-1] of TPointF;
     constructor Create;
     procedure ResizeStructure(ARows, AColumns: Integer);
     procedure ResetBounds(Width, Height: Integer);
@@ -100,6 +101,7 @@ begin
   end;
   Lines[2].Color := $607F7F7F;
   Lines[3].Kind := 0;
+  for I:=0 to High(LegendOffsets) do LegendOffsets[I]:=PointF(-0.8,0);
   ResizeStructure(Rows, Columns);
 end;
 

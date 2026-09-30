@@ -28,22 +28,24 @@ uses System.SysUtils, System.Math, Winapi.Windows, GraphValues;
 
 constructor TGraphDataPanel.Create(AOwner:TComponent);
 var L:TLabel;
+  function S(Value:Integer):Integer;
+  begin Result:=MulDiv(Value,CurrentPPI,96); end;
 begin
   inherited;
   if AOwner is TWinControl then Parent:=TWinControl(AOwner);
-  Width:=290; Height:=280; BevelOuter:=bvNone; Color:=$00303030;
-  L:=TLabel.Create(Self); L.Parent:=Self; L.Caption:='文字・値'; L.SetBounds(12,8,300,24);
-  L:=TLabel.Create(Self); L.Parent:=Self; L.Caption:='表題'; L.SetBounds(12,40,80,24);
-  FTitle:=TEdit.Create(Self); FTitle.Parent:=Self; FTitle.SetBounds(12,66,272,30);
+  Width:=S(290); Height:=S(280); BevelOuter:=bvNone; Color:=$00303030;
+  L:=TLabel.Create(Self); L.Parent:=Self; L.Caption:='文字・値'; L.SetBounds(S(12),S(8),S(300),S(24));
+  L:=TLabel.Create(Self); L.Parent:=Self; L.Caption:='表題'; L.SetBounds(S(12),S(40),S(80),S(24));
+  FTitle:=TEdit.Create(Self); FTitle.Parent:=Self; FTitle.SetBounds(S(12),S(66),S(272),S(30));
   FTitle.StyleElements:=[];
   FTitle.Color:=$00303030; FTitle.Font.Color:=$00EEEEEE; FTitle.OnChange:=Changed;
-  L:=TLabel.Create(Self); L.Parent:=Self; L.Caption:='単位'; L.SetBounds(12,106,80,24);
-  FUnit:=TEdit.Create(Self); FUnit.Parent:=Self; FUnit.SetBounds(12,132,272,30);
+  L:=TLabel.Create(Self); L.Parent:=Self; L.Caption:='単位'; L.SetBounds(S(12),S(106),S(80),S(24));
+  FUnit:=TEdit.Create(Self); FUnit.Parent:=Self; FUnit.SetBounds(S(12),S(132),S(272),S(30));
   FUnit.StyleElements:=[];
   FUnit.Color:=$00303030; FUnit.Font.Color:=$00EEEEEE; FUnit.OnChange:=Changed;
-  L:=TLabel.Create(Self); L.Parent:=Self; L.Caption:='要素名'; L.SetBounds(40,176,90,22);
+  L:=TLabel.Create(Self); L.Parent:=Self; L.Caption:='要素名'; L.SetBounds(S(40),S(176),S(90),S(22));
   L:=TLabel.Create(Self); L.Parent:=Self; L.Caption:='値（カンマ区切り）';
-  L.SetBounds(138,176,146,22);
+  L.SetBounds(S(138),S(176),S(146),S(22));
 end;
 
 procedure TGraphDataPanel.Changed(Sender:TObject);
@@ -51,6 +53,11 @@ begin if not FChanging and Assigned(FOnChange) then FOnChange(Self); end;
 
 procedure TGraphDataPanel.SetRowCount(Count:Integer);
 var I,Old:Integer;
+  procedure Bounds(Control:TControl; X,Y,W,H:Integer);
+  begin
+    Control.SetBounds(MulDiv(X,CurrentPPI,96),MulDiv(Y,CurrentPPI,96),
+      MulDiv(W,CurrentPPI,96),MulDiv(H,CurrentPPI,96));
+  end;
 begin
   Old:=Length(FRowNames);
   for I:=Count to Old-1 do
@@ -71,11 +78,11 @@ begin
   end;
   for I:=0 to Count-1 do
   begin
-    FRowLabels[I].Caption:=IntToStr(I+1); FRowLabels[I].SetBounds(12,204+I*40,26,26);
-    FRowNames[I].SetBounds(40,200+I*40,90,30);
-    FRowValues[I].SetBounds(138,200+I*40,146,30);
+    FRowLabels[I].Caption:=IntToStr(I+1); Bounds(FRowLabels[I],12,204+I*40,26,26);
+    Bounds(FRowNames[I],40,200+I*40,90,30);
+    Bounds(FRowValues[I],138,200+I*40,146,30);
   end;
-  Height:=Max(280,208+Count*40);
+  Height:=MulDiv(Max(280,208+Count*40),CurrentPPI,96);
 end;
 
 procedure TGraphDataPanel.RowKeyDown(Sender:TObject; var Key:Word; Shift:TShiftState);

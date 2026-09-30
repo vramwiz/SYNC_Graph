@@ -3,7 +3,7 @@
 
 // 実際のグラフ専用ユニットを使い、値・保存・透過・4種の描画を検証する。
 uses System.SysUtils, System.Types, System.Skia, System.JSON, GraphModel, GraphValues,
-  GraphSettings, GraphFonts, GraphAnimation, GraphRenderer, GraphPainter, GraphComposite;
+  GraphRadarGeometry, GraphSettings, GraphFonts, GraphAnimation, GraphRenderer, GraphPainter, GraphComposite;
 var Count:Integer;
 procedure Check(Condition:Boolean; const Name:string);
 begin
@@ -40,7 +40,8 @@ begin
       TextOnly:=RenderGraph(D,Shared,Animation,320,240,Labels,2);
       Opaque:=0;
       for I:=0 to 320*240-1 do
-        if TextOnly[I*4+3]=255 then
+        if (TextOnly[I*4+3]=255) and (TextOnly[I*4]=255) and
+          (TextOnly[I*4+1]=0) and (TextOnly[I*4+2]=255) then
         begin
           Inc(Opaque);
           if (Full[I*4]<>255) or (Full[I*4+1]<>0) or (Full[I*4+2]<>255) then
@@ -71,6 +72,58 @@ begin
     try Check(E.TextStyles[trTitle].OutlineWidth=0,'saved disabled outline is preserved'); finally E.Free; end;
   finally D.Free; end;
 end;
+procedure CheckLegendAttachment;
+var Doc,Restored:TGraphDocument; Shared:TGraphShared; Labels:TArray<TGraphLabel>;
+  L,Before:TGraphLabel; Pixels:TBytes; Animation:TGraphAnimation; Found:Boolean;
+begin
+  Doc:=TGraphDocument.Create;
+  try
+    Doc.Kind:=gkBar; Doc.ResetBounds(640,480); Shared:=DefaultShared;
+    Shared.Values:='1,2,3'#13#10'2,3,4'#13#10'3,4,5'; Animation:=Default(TGraphAnimation);
+    Pixels:=RenderGraph(Doc,Shared,Animation,640,480,Labels); Found:=False;
+    for L in Labels do if L.ID=2 then begin Before:=L; Found:=True; end;
+    Check(Found and Before.HasLegend,'legend attached to element name');
+    Doc.Offsets[2]:=PointF(60,-40);
+    Pixels:=RenderGraph(Doc,Shared,Animation,640,480,Labels);
+    for L in Labels do if L.ID=2 then
+      Check((Abs(L.LegendBounds.Left-Before.LegendBounds.Left-60)<0.01) and
+        (Abs(L.LegendBounds.Top-Before.LegendBounds.Top+40)<0.01),'legend follows text movement');
+    Doc.LabelScales[2]:=2;
+    Pixels:=RenderGraph(Doc,Shared,Animation,640,480,Labels);
+    for L in Labels do if L.ID=2 then
+      Check(Abs(L.LegendBounds.Width-2*Before.LegendBounds.Width)<0.01,'legend follows text scale');
+    Doc.LegendOffsets[0]:=PointF(2,-1);
+    Restored:=LoadGraph(SaveGraph(Doc));
+    try Check((Restored.LegendOffsets[0].X=2) and (Restored.LegendOffsets[0].Y=-1),
+      'legend relative position survives save and reload'); finally Restored.Free; end;
+    Restored:=LoadGraph('{"version":3}');
+    try Check(Abs(Restored.LegendOffsets[0].X+0.8)<0.01,'old settings receive default legend position');
+    finally Restored.Free; end;
+  finally Doc.Free; end;
+end;
+procedure CheckRadarBounds;
+var Geometry:TGraphRadarGeometry; B,Actual:TRectF; P:TPointF;
+  Rows,Rotation,I:Integer;
+begin
+  B:=RectF(20,30,620,270);
+  for Rows in [3,4,5,8] do
+    for Rotation in [0,17,90] do
+    begin
+      Geometry:=TGraphRadarGeometry.Fit(B,Rows,Rotation);
+      Actual:=RectF(1E9,1E9,-1E9,-1E9);
+      for I:=0 to Rows-1 do
+      begin
+        P:=Geometry.PointAt(-90+Rotation+I*360/Rows,1);
+        if P.X<Actual.Left then Actual.Left:=P.X;
+        if P.X>Actual.Right then Actual.Right:=P.X;
+        if P.Y<Actual.Top then Actual.Top:=P.Y;
+        if P.Y>Actual.Bottom then Actual.Bottom:=P.Y;
+      end;
+      Check((Abs(Actual.Left-B.Left)<0.001) and (Abs(Actual.Right-B.Right)<0.001) and
+        (Abs(Actual.Top-B.Top)<0.001) and (Abs(Actual.Bottom-B.Bottom)<0.001),
+        Format('radar fills edited bounds rows=%d rotation=%d',[Rows,Rotation]));
+    end;
+end;
 procedure CheckRadarOverlap;
 var Doc:TGraphDocument; Shared:TGraphShared; Animation:TGraphAnimation;
   Pixels:TBytes; Labels:TArray<TGraphLabel>; I,Inside,Outside,Edge:Integer;
@@ -94,7 +147,7 @@ begin
     Check(Abs(Integer(Pixels[Outside+3])-102)<=2,'radar upper fill alone has 40 percent opacity');
     Doc.Lines[4].Kind:=1; Doc.Lines[4].Width:=6;
     Pixels:=RenderGraph(Doc,Shared,Animation,320,240,Labels);
-    Edge:=(135*320+185)*4;
+    Edge:=(135*320+197)*4;
     Check((Pixels[Edge]>240) and (Pixels[Edge+2]<10) and (Pixels[Edge+3]=255),
       'radar lower outline stays visible over upper fill in data color');
     Doc.Lines[0].Kind:=1; Doc.Lines[0].Width:=4; Doc.Lines[0].Color:=$FF00FF00;
@@ -225,7 +278,7 @@ var D,E:TGraphDocument; S:TGraphShared; V:TGraphValues; Scale:TGraphScale;
   TitleWidth,PartialLabelTop,FullLabelTop:Single;
   Solo:TGraphShared; PartialAlpha,FullAlpha:Integer;
 begin
-  CheckTextOnTop; CheckFonts; CheckRadarOverlap; CheckDataLines; CheckFillPatterns;
+  CheckTextOnTop; CheckLegendAttachment; CheckFonts; CheckRadarBounds; CheckRadarOverlap; CheckDataLines; CheckFillPatterns;
   D:=TGraphDocument.Create;
   try
     D.ResetBounds(640,480); S:=DefaultShared;

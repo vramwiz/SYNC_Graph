@@ -27,55 +27,59 @@ type
     property ValueFormatEdit:TEdit read FValueFormat;
   end;
 implementation
-uses System.SysUtils, System.Math, Vcl.Controls;
+uses Winapi.Windows, System.SysUtils, System.Math, Vcl.Controls;
+
+const GraphKindOrder:array[0..4] of TGraphKind=(gkNone,gkBar,gkLine,gkPie,gkRadar);
 
 constructor TGraphLayoutPanel.Create(AOwner:TComponent);
 var L:TLabel; I:Integer;
+  function S(Value:Integer):Integer;
+  begin Result:=MulDiv(Value,CurrentPPI,96); end;
   procedure LabelAt(const Caption:string; X,Y,W:Integer);
   begin
     L:=TLabel.Create(Self); L.Parent:=Self; L.Caption:=Caption;
-    L.SetBounds(X,Y,W,24); L.Font.Color:=$00EEEEEE;
+    L.SetBounds(S(X),S(Y),S(W),S(24)); L.Font.Color:=$00EEEEEE;
   end;
   function NumberAt(X,Y,W:Integer; MinValue,MaxValue:Double; Empty:Boolean=False):TGraphNumberEdit;
   begin
     Result:=TGraphNumberEdit.Create(Self); Result.Parent:=Self;
-    Result.SetBounds(X,Y,W,30); Result.Minimum:=MinValue; Result.Maximum:=MaxValue;
+    Result.SetBounds(S(X),S(Y),S(W),S(30)); Result.Minimum:=MinValue; Result.Maximum:=MaxValue;
     Result.AllowEmpty:=Empty; Result.OnChange:=Changed;
   end;
   function CountAt(X,W,MaxValue:Integer):TEdit;
   var Spin:TUpDown;
   begin
     Result:=TEdit.Create(Self); Result.Parent:=Self;
-    Result.SetBounds(X,80,W-18,30); Result.Text:='3';
+    Result.SetBounds(S(X),S(80),S(W-18),S(30)); Result.Text:='3';
     Result.StyleElements:=[]; Result.Color:=$00303030; Result.Font.Color:=$00EEEEEE;
     Spin:=TUpDown.Create(Self); Spin.Parent:=Self;
     Spin.Min:=1; Spin.Max:=MaxValue; Spin.Thousands:=False;
     // Associateは不正な生入力をフォーカス移動で補正するため使わず、矢印操作だけを接続する。
     // 手入力の検証・保管はフォームの終了処理に委ね、入力途中の文字を失わない。
     Spin.Position:=3; Spin.Tag:=X; Spin.OnClick:=CountClicked;
-    Spin.SetBounds(X+W-18,80,18,30);
+    Spin.SetBounds(S(X+W-18),S(80),S(18),S(30));
     Result.OnChange:=Changed;
   end;
 begin
   inherited;
   if AOwner is TWinControl then Parent:=TWinControl(AOwner);
-  Width:=290; Height:=480; BevelOuter:=bvNone; Color:=$00303030;
+  Width:=S(290); Height:=S(480); BevelOuter:=bvNone; Color:=$00303030;
   LabelAt('構造・目盛り',12,8,272);
-  FKind:=TDarkComboBox.Create(Self); FKind.Parent:=Self; FKind.SetBounds(12,36,272,34);
-  FKind.Font.Assign(Font); FKind.Items.Add('未設定'); FKind.Items.Add('N角形');
-  FKind.Items.Add('折れ線'); FKind.Items.Add('棒'); FKind.Items.Add('円');
+  FKind:=TDarkComboBox.Create(Self); FKind.Parent:=Self; FKind.SetBounds(S(12),S(36),S(272),S(34));
+  FKind.Font.Assign(Font); FKind.Items.Add('未設定'); FKind.Items.Add('棒');
+  FKind.Items.Add('折れ線'); FKind.Items.Add('円'); FKind.Items.Add('レーダーチャート');
   FKind.OnChange:=Changed;
   LabelAt('要素数',12,86,55); FRows:=CountAt(68,70,MaxGraphRows);
   LabelAt('データ数',146,86,70); FColumns:=CountAt(216,68,MaxGraphColumns);
   FHorizontal:=TCheckBox.Create(Self); FHorizontal.Parent:=Self;
-  FHorizontal.Caption:='横向き'; FHorizontal.SetBounds(12,146,120,28);
+  FHorizontal.Caption:='横向き'; FHorizontal.SetBounds(S(12),S(146),S(120),S(28));
   FHorizontal.OnClick:=Changed;
   FStacked:=TCheckBox.Create(Self); FStacked.Parent:=Self;
-  FStacked.Caption:='積み重ね'; FStacked.SetBounds(146,146,138,28);
+  FStacked.Caption:='積み重ね'; FStacked.SetBounds(S(146),S(146),S(138),S(28));
   FStacked.OnClick:=Changed;
   LabelAt('要素名配置',12,192,94);
   FNameLayout:=TDarkComboBox.Create(Self); FNameLayout.Parent:=Self;
-  FNameLayout.SetBounds(108,184,176,34);
+  FNameLayout.SetBounds(S(108),S(184),S(176),S(34));
   for I:=1 to 3 do FNameLayout.Items.Add('配置 '+IntToStr(I));
   FNameLayout.OnChange:=NameLayoutChanged;
   LabelAt('相対角度',12,234,90);
@@ -87,7 +91,7 @@ begin
   LabelAt('値書式（右クリックで候補）',12,400,272);
   FValueFormat:=TEdit.Create(Self); FValueFormat.Parent:=Self;
   FValueFormat.StyleElements:=[];
-  FValueFormat.SetBounds(12,428,272,30); FValueFormat.Color:=$00303030;
+  FValueFormat.SetBounds(S(12),S(428),S(272),S(30)); FValueFormat.Color:=$00303030;
   FValueFormat.Font.Color:=$00EEEEEE; FValueFormat.OnChange:=Changed;
 end;
 
@@ -112,10 +116,12 @@ begin
 end;
 
 procedure TGraphLayoutPanel.Load(Doc:TGraphDocument);
+var I:Integer;
 begin
   FBusy:=True;
   try
-    FKind.ItemIndex:=Ord(Doc.Kind);
+    for I:=Low(GraphKindOrder) to High(GraphKindOrder) do
+      if GraphKindOrder[I]=Doc.Kind then begin FKind.ItemIndex:=I; Break; end;
     FRows.Text:=IntToStr(Doc.Rows); FColumns.Text:=IntToStr(Doc.Columns);
     FHorizontal.Checked:=Doc.Horizontal; FStacked.Checked:=Doc.Stacked;
     FNameLayout.ItemIndex:=EnsureRange(Doc.NameLayout,0,2);
@@ -136,7 +142,7 @@ begin
   Rotation:=StrToFloat(FRotation.Text,TFormatSettings.Invariant);
   if not InRange(Rotation,-360,360) then
     raise EConvertError.Create('相対角度は-360～360で入力してください。');
-  Doc.Kind:=TGraphKind(FKind.ItemIndex);
+  Doc.Kind:=GraphKindOrder[FKind.ItemIndex];
   Doc.ResizeStructure(Rows,Columns);
   if Doc.Kind=gkPie then
   begin

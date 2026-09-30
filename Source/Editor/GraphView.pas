@@ -1,12 +1,13 @@
 ﻿unit GraphView;
 
-// 背景キャンバス上でグラフと文字の選択・ドラッグを扱い、追従表示を合成する。
+// グラフ・文字・凡例の選択と入力を接続する。変形計算とガイド描画は専用ユニットへ委譲する。
 interface
 uses System.Classes, System.Types, System.SysUtils, Vcl.Controls, Vcl.Graphics,
-  SyncCanvasView, GraphModel, GraphPainter;
+  SyncCanvasView, GraphModel, GraphPainter, GraphTextSnap;
 type
   TGraphView=class(TSyncCanvasView)
   private
+    // Docはフォーム所有。Labelsと画像キャッシュはViewが保持する描画時点のコピー。
     FDoc:TGraphDocument;
     FLabels:TArray<TGraphLabel>;
     FTarget:Integer;
@@ -28,11 +29,20 @@ type
     FImageWidth,FImageHeight:Integer;
     FDragStart:TPointF;
     FInitialTextStyle:TTextStyle;
+    FInitialLabelBounds:TRectF;
+    FInitialLabelOffset:TPointF;
+    FInitialLabelScale:Single;
+    // 相対位置は文字サイズ単位。ドラッグ開始値から計算し、再描画・スナップで累積誤差を出さない。
+    FInitialLegendOffset:TPointF;
+    FInitialLegendBounds:TRectF;
+    FLegendSelected:Boolean;
+    FSnapFeedback:TTextSnapFeedback;
     function ScenePoint(X,Y:Integer):TPointF;
     function LabelIndex(ID:Integer):Integer;
     function SelectedBounds:TRectF;
     function SelectedLabelRole:TTextRole;
     procedure DrawDecorations(const Bounds:TRectF);
+    function HitLegend(X,Y:Integer):Integer;
     function HitDecoration(X,Y:Integer):Integer;
     procedure BeginDrag(const P:TPointF);
     procedure UpdateCursor(X,Y:Integer);
@@ -59,8 +69,8 @@ type
   end;
 implementation
 uses System.Math, GraphCanvasFrame, GraphViewBitmapCache,
-  GraphViewBounds, GraphTextDecorations;
-const LabelMoveBase=1000; LabelResizeBase=100000; DecorationBase=1000000;
+  GraphViewBounds, GraphTextDecorations, GraphSnapGuides, GraphTextTransform;
+const LabelMoveBase=1000; LabelResizeBase=100000; LegendMoveBase=500000; DecorationBase=1000000;
 
 constructor TGraphView.Create(AOwner:TComponent);
 begin
@@ -132,10 +142,29 @@ begin
     if I>=0 then DrawRgbaLayer(Canvas,FTextBitmap,FTextCrop,FTextOrigin,
       FLabels[I].Bounds,PanX,PanY,Zoom);
   end;
-  DrawBoundsHandles(Canvas,SelectedBounds,PanX,PanY,Zoom);
-  if LabelIndex(FSelectedLabelID)>=0 then DrawDecorations(SelectedBounds);
+  if FActiveLabelID>=0 then
+    DrawSnapGuides(Canvas,FLabels,FSnapFeedback,PanX,PanY,Zoom,ClientWidth,ClientHeight);
+  I:=LabelIndex(FSelectedLabelID);
+  if FLegendSelected and (I>=0) and FLabels[I].HasLegend then
+  begin
+    B:=FLabels[I].LegendBounds; Canvas.Brush.Style:=bsClear;
+    Canvas.Pen.Color:=$00E9B456; Canvas.Pen.Style:=psSolid;
+    Canvas.Rectangle(Round(PanX+B.Left*Zoom)-3,Round(PanY+B.Top*Zoom)-3,
+      Round(PanX+B.Right*Zoom)+3,Round(PanY+B.Bottom*Zoom)+3);
+  end else
+  begin
+    DrawBoundsHandles(Canvas,SelectedBounds,PanX,PanY,Zoom);
+    if I>=0 then DrawDecorations(SelectedBounds);
+  end;
 end;
 
+function TGraphView.HitLegend(X,Y:Integer):Integer;
+var I:Integer; P:TPointF;
+begin
+  Result:=-1; P:=ScenePoint(X,Y);
+  for I:=High(FLabels) downto 0 do
+    if FLabels[I].HasLegend and FLabels[I].LegendBounds.Contains(P) then Exit(I);
+end;
 function TGraphView.HitDecoration(X,Y:Integer):Integer;
 var I:Integer;
 begin
@@ -180,6 +209,7 @@ end;
 procedure TGraphView.UpdateCursor(X,Y:Integer);
 var H,I:Integer; P:TPointF;
 begin
+  if HitLegend(X,Y)>=0 then begin Cursor:=crSizeAll; Exit; end;
   H:=HitDecoration(X,Y);
   if H>=0 then
   begin
@@ -216,6 +246,7 @@ end;
 procedure TGraphView.BeginDrag(const P:TPointF);
 var I:Integer;
 begin
+  FSnapFeedback:=Default(TTextSnapFeedback); FSnapFeedback.SizeID:=-1;
   SetFocus; FLast:=P; FDragStart:=P; MouseCapture:=True;
   FActiveLabelID:=-1;
   if FTarget>=DecorationBase then
@@ -224,8 +255,22 @@ begin
     if I>=0 then FInitialTextStyle:=FDoc.TextStyles[FLabels[I].Role];
     Exit;
   end;
+  if FTarget>=LegendMoveBase then
+  begin
+    FActiveLabelID:=FTarget-LegendMoveBase;
+    FInitialLegendOffset:=FDoc.LegendOffsets[FActiveLabelID-2];
+    I:=LabelIndex(FActiveLabelID); FInitialLegendBounds:=FLabels[I].LegendBounds;
+    FPreviewActive:=False; Exit;
+  end;
   if FTarget>=LabelResizeBase then FActiveLabelID:=(FTarget-LabelResizeBase) div 8
   else if FTarget>=LabelMoveBase then FActiveLabelID:=FTarget-LabelMoveBase;
+  I:=LabelIndex(FActiveLabelID);
+  if I>=0 then
+  begin
+    FInitialLabelBounds:=FLabels[I].Bounds;
+    FInitialLabelOffset:=FDoc.Offsets[FActiveLabelID];
+    FInitialLabelScale:=FDoc.LabelScales[FActiveLabelID];
+  end;
   if (FActiveLabelID>=0) and Assigned(FOnBeginLabelEdit) then
     FOnBeginLabelEdit(Self);
   if not FGraphBitmap.Empty then
@@ -238,10 +283,14 @@ begin
   FTarget:=-3;
   if (Button=mbLeft) and not(ssCtrl in Shift) and (FDoc<>nil) and (FDoc.Kind<>gkNone) then
   begin
-    PreviousSelection:=FSelectedLabelID;
+    PreviousSelection:=FSelectedLabelID; FLegendSelected:=False;
     P:=ScenePoint(X,Y);
-    H:=HitDecoration(X,Y);
-    if H>=0 then FTarget:=DecorationBase+H;
+    I:=HitLegend(X,Y);
+    if I>=0 then
+    begin FSelectedLabelID:=FLabels[I].ID; FLegendSelected:=True;
+      FTarget:=LegendMoveBase+FSelectedLabelID; end;
+    if FTarget=-3 then
+    begin H:=HitDecoration(X,Y); if H>=0 then FTarget:=DecorationBase+H; end;
     I:=LabelIndex(FSelectedLabelID);
     if (FTarget=-3) and (I>=0) then
     begin
@@ -268,7 +317,7 @@ begin
 end;
 
 procedure TGraphView.MouseMove(Shift:TShiftState; X,Y:Integer);
-var P,D:TPointF; I,H:Integer; OldB,NewB:TRectF; Factor,WX,HY:Single;
+var P,D:TPointF; I,H:Integer; NewB:TRectF; Factor:Single;
     Role:TTextRole;
 begin
   if (FTarget=-3) or not MouseCapture then
@@ -278,6 +327,18 @@ begin
     Exit;
   end;
   P:=ScenePoint(X,Y); D:=P-FLast; FLast:=P;
+  if (FTarget>=LegendMoveBase) and (FTarget<DecorationBase) then
+  begin
+    I:=FTarget-LegendMoveBase; D:=P-FDragStart;
+    Factor:=FDoc.TextStyles[trName].Size*FDoc.LabelScales[I];
+    NewB:=FInitialLegendBounds; NewB.Offset(D.X,D.Y);
+    NewB:=SnapLegendBounds(NewB,I,FLabels,10,@FSnapFeedback);
+    D:=PointF(NewB.Left-FInitialLegendBounds.Left,NewB.Top-FInitialLegendBounds.Top);
+    FDoc.LegendOffsets[I-2]:=FInitialLegendOffset+PointF(D.X/Factor,D.Y/Factor);
+    H:=LabelIndex(I); if H>=0 then FLabels[H].LegendBounds:=NewB;
+    if Assigned(FOnDecorationChanged) then FOnDecorationChanged(Self);
+    Invalidate; Exit;
+  end;
   if FTarget>=DecorationBase then
   begin
     I:=LabelIndex(FSelectedLabelID);
@@ -301,29 +362,21 @@ begin
     begin
       if H<0 then
       begin
-        FDoc.Offsets[I]:=FDoc.Offsets[I]+D;
+        D:=P-FDragStart; NewB:=FInitialLabelBounds; NewB.Offset(D.X,D.Y);
+        NewB:=SnapTextBounds(NewB,I,FLabels,10,@FSnapFeedback);
+        FDoc.Offsets[I]:=FInitialLabelOffset+PointF(
+          NewB.Left-FInitialLabelBounds.Left,NewB.Top-FInitialLabelBounds.Top);
         H:=LabelIndex(I);
-        if H>=0 then FLabels[H].Bounds.Offset(D.X,D.Y);
+        if H>=0 then FLabels[H].Bounds:=NewB;
       end
       else
       begin
         H:=LabelIndex(I);
         if H>=0 then
         begin
-          OldB:=FLabels[H].Bounds; NewB:=OldB;
-          ResizeBoundsHandle(NewB,(FTarget-LabelResizeBase) mod 8,D,10);
-          WX:=NewB.Width/OldB.Width; HY:=NewB.Height/OldB.Height;
-          if Abs(WX-1)>=Abs(HY-1) then Factor:=WX else Factor:=HY;
-          Factor:=EnsureRange(Factor,0.1/FDoc.LabelScales[I],20/FDoc.LabelScales[I]);
-          FDoc.LabelScales[I]:=FDoc.LabelScales[I]*Factor;
-          FDoc.Offsets[I]:=FDoc.Offsets[I]+PointF(
-            NewB.CenterPoint.X-OldB.CenterPoint.X,
-            NewB.CenterPoint.Y-OldB.CenterPoint.Y+
-              0.3*OldB.Height*(Factor-1));
-          FLabels[H].Bounds:=RectF(NewB.CenterPoint.X-OldB.Width*Factor/2,
-            NewB.CenterPoint.Y-OldB.Height*Factor/2,
-            NewB.CenterPoint.X+OldB.Width*Factor/2,
-            NewB.CenterPoint.Y+OldB.Height*Factor/2);
+          FLabels[H].Bounds:=ResizeGraphText(FDoc,I,FLabels[H].Role,FLabels,
+            FInitialLabelBounds,FInitialLabelOffset,P-FDragStart,FInitialLabelScale,
+            (FTarget-LabelResizeBase) mod 8,FSnapFeedback);
         end;
       end;
     end;

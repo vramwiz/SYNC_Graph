@@ -35,15 +35,17 @@ uses System.SysUtils, Vcl.Forms, Vcl.Controls, Winapi.Windows, System.Skia, Grap
 constructor TGraphTextToolbar.Create(AOwner:TComponent);
 const Hints:array[0..4] of string=('太字','斜体','文字色','縁取り色','影色');
 var I:Integer; Name:string; Face:ISkTypeface;
+  function S(Value:Integer):Integer;
+  begin Result:=MulDiv(Value,CurrentPPI,96); end;
 begin
   inherited;
   if AOwner is TWinControl then Parent:=TWinControl(AOwner);
-  BevelOuter:=bvNone; Height:=44; Visible:=False;
+  BevelOuter:=bvNone; Height:=S(44); Visible:=False;
   FRoleLabel:=TLabel.Create(Self); FRoleLabel.Parent:=Self;
-  FRoleLabel.AutoSize:=False; FRoleLabel.SetBounds(0,11,70,28);
+  FRoleLabel.AutoSize:=False; FRoleLabel.SetBounds(S(0),S(11),S(70),S(28));
   FRoleLabel.Font.Color:=$00EEEEEE;
   FFont:=TDarkComboBox.Create(Self); FFont.Parent:=Self;
-  FFont.SetBounds(72,4,230,34); FFont.OnChange:=FontChanged;
+  FFont.SetBounds(S(72),S(4),S(230),S(34)); FFont.OnChange:=FontChanged;
   FFont.Font.Color:=$00EEEEEE;
   // 描画と同じ実書体の解決を使う。言語別名の一致だけでは候補を除外しない。
   for Name in Screen.Fonts do
@@ -59,7 +61,7 @@ begin
   for I:=0 to 4 do
   begin
     FButtons[I]:=TToolbarIconButton.Create(Self);
-    FButtons[I].Parent:=Self; FButtons[I].SetBounds(310+I*40,3,36,36);
+    FButtons[I].Parent:=Self; FButtons[I].SetBounds(S(310+I*40),S(3),S(36),S(36));
     FButtons[I].Tag:=I; FButtons[I].Hint:=Hints[I];
     FButtons[I].OnDrawIcon:=DrawTool; FButtons[I].OnClick:=ToolClick;
   end;

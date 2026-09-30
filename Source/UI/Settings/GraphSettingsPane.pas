@@ -33,7 +33,7 @@ type
 
 implementation
 
-uses System.Math, GraphNumberEdit, HorizontalTrackBarControl;
+uses Winapi.Windows, System.Math, GraphNumberEdit, HorizontalTrackBarControl;
 
 function ChildAtScreen(Root:TWinControl; const ScreenPoint:TPoint):TControl;
 var I:Integer; P:TPoint; Child:TControl;
@@ -51,13 +51,15 @@ begin
 end;
 
 constructor TGraphSettingsPane.Create(AOwner:TComponent);
+  function S(Value:Integer):Integer;
+  begin Result:=MulDiv(Value,CurrentPPI,96); end;
 begin
   inherited;
   // 子の数値欄が生成中にWindowsハンドルを使うため、先にフォームへ接続する。
   if AOwner is TWinControl then Parent:=TWinControl(AOwner);
-  Width:=312; Align:=alRight; BevelOuter:=bvNone;
+  Width:=S(312); Align:=alRight; BevelOuter:=bvNone;
   FPicker:=TColorPickerPanel.Create(Self); FPicker.Parent:=Self;
-  FPicker.Align:=alBottom; FPicker.Height:=224;
+  FPicker.Align:=alBottom; FPicker.Height:=S(224);
   FPicker.ValueFormat:=cvHex;
   FViewport:=TPanel.Create(Self); FViewport.Parent:=Self;
   FViewport.Align:=alClient; FViewport.BevelOuter:=bvNone;
@@ -65,7 +67,7 @@ begin
   FContent:=TPanel.Create(Self); FContent.Parent:=FViewport;
   FContent.BevelOuter:=bvNone; FContent.Color:=$00303030;
   FScroll:=TVerticalScrollBarControl.Create(Self); FScroll.Parent:=FViewport;
-  FScroll.Align:=alRight; FScroll.Width:=14; FScroll.SmallChange:=48;
+  FScroll.Align:=alRight; FScroll.Width:=S(14); FScroll.SmallChange:=S(48);
   FScroll.OnChange:=Scrolled;
   FLayout:=TGraphLayoutPanel.Create(FContent); FLayout.Parent:=FContent;
   FData:=TGraphDataPanel.Create(FContent); FData.Parent:=FContent;
@@ -78,20 +80,22 @@ procedure TGraphSettingsPane.ViewportResized(Sender:TObject);
 begin RefreshLayout; end;
 
 procedure TGraphSettingsPane.RefreshLayout;
-var W,H,ViewHeight:Integer;
+var W,H,ViewHeight,Gap,Step:Integer;
 begin
   if (FContent=nil) or (FScroll=nil) or
     (FLayout=nil) or (FData=nil) or (FStyles=nil) or (FColors=nil) then Exit;
+  Gap:=MulDiv(8,CurrentPPI,96); Step:=MulDiv(48,CurrentPPI,96);
   W:=Max(1,FViewport.ClientWidth-FScroll.Width);
-  H:=FLayout.Height+FData.Height+FColors.Height+FStyles.Height+32;
+  H:=FLayout.Height+FData.Height+FColors.Height+FStyles.Height+4*Gap;
   ViewHeight:=Max(1,FViewport.ClientHeight);
-  FScroll.LargeChange:=Max(48,ViewHeight-48);
+  FScroll.SmallChange:=Step;
+  FScroll.LargeChange:=Max(Step,ViewHeight-Step);
   FScroll.SetRange(Max(0,H-ViewHeight),ViewHeight);
   FContent.SetBounds(0,-FScroll.Position,W,H);
   FLayout.SetBounds(0,0,W,FLayout.Height);
-  FData.SetBounds(0,FLayout.Height+8,W,FData.Height);
-  FColors.SetBounds(0,FLayout.Height+FData.Height+16,W,FColors.Height);
-  FStyles.SetBounds(0,FColors.Top+FColors.Height+8,W,FStyles.Height);
+  FData.SetBounds(0,FLayout.Height+Gap,W,FData.Height);
+  FColors.SetBounds(0,FLayout.Height+FData.Height+2*Gap,W,FColors.Height);
+  FStyles.SetBounds(0,FColors.Top+FColors.Height+Gap,W,FStyles.Height);
   FPicker.RefreshLayout;
 end;
 

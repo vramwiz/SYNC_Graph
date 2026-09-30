@@ -3,3 +3,12 @@ __history/
 *.dproj.local
 *.identcache
 *.dsk
+
+Setup/*.zip
+Setup/SYNC_Graph/
+
+# Required Skia runtime for clone builds
+!Lib/
+!Lib/Skia/
+!Lib/Skia/Win64/
+!Lib/Skia/Win64/sk4d.dll

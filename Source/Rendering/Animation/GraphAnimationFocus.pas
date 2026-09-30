@@ -10,11 +10,11 @@ function CurrentGraphFocus(Doc:TGraphDocument; const Values:TGraphValues;
 
 implementation
 
-uses System.Math;
+uses System.Math, GraphRadarGeometry;
 
 function CurrentGraphFocus(Doc:TGraphDocument; const Values:TGraphValues;
   const Animation:TGraphAnimation):TPointF;
-var Row,Column,I:Integer; B:TRectF; Scale:TGraphScale;
+var Geometry:TGraphRadarGeometry; Row,Column,I:Integer; B:TRectF; Scale:TGraphScale;
   Shape,Value,Base,Category,Radius,Angle,Total,Start:Double;
 begin
   B:=Doc.Bounds; Result:=B.CenterPoint;
@@ -33,11 +33,11 @@ begin
   Scale:=CalculateScale(Doc,Values);
   if Doc.Kind=gkRadar then
   begin
-    Radius:=Min(B.Width,B.Height)/2;
-    Radius:=Radius*EnsureRange((Values[Row,Column]-Scale.Minimum)/
+    Geometry:=TGraphRadarGeometry.Fit(B,Doc.Rows,Doc.Rotation);
+    Radius:=EnsureRange((Values[Row,Column]-Scale.Minimum)/
       (Scale.Maximum-Scale.Minimum),0.0,1.0)*Shape;
-    Angle:=DegToRad(-90+Doc.Rotation+Row*360/Doc.Rows);
-    Exit(PointF(Result.X+Cos(Angle)*Radius,Result.Y+Sin(Angle)*Radius));
+    Angle:=-90+Doc.Rotation+Row*360/Doc.Rows;
+    Exit(Geometry.PointAt(Angle,Radius));
   end;
   Value:=Values[Row,Column]*Shape;
   if Doc.Kind=gkBar then

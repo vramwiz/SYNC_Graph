@@ -24,13 +24,15 @@ public
   property OnColorTargetChange:TNotifyEvent read FOnColorTargetChange write FOnColorTargetChange;
 end;
 implementation
-uses System.SysUtils, System.Math, Vcl.Graphics;
+uses Winapi.Windows, System.SysUtils, System.Math, Vcl.Graphics;
 constructor TGraphColorStylePanel.Create(AOwner:TComponent);
+  function S(Value:Integer):Integer;
+  begin Result:=MulDiv(Value,CurrentPPI,96); end;
 begin
   inherited;
   if AOwner is TWinControl then Parent:=TWinControl(AOwner);
-  Width:=290; Height:=80; BevelOuter:=bvNone; Color:=$00303030;
-  FTitle:=TLabel.Create(Self); FTitle.Parent:=Self; FTitle.SetBounds(12,8,272,24);
+  Width:=S(290); Height:=S(80); BevelOuter:=bvNone; Color:=$00303030;
+  FTitle:=TLabel.Create(Self); FTitle.Parent:=Self; FTitle.SetBounds(S(12),S(8),S(272),S(24));
   FSelected:=TLabel.Create(Self); FSelected.Parent:=Self;
   FMarker:=TDarkComboBox.Create(Self); FMarker.Parent:=Self;
   FMarker.Items.Add('マーク: なし'); FMarker.Items.Add('マーク: 円'); FMarker.Items.Add('マーク: 角');

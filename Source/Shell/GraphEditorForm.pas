@@ -55,6 +55,7 @@ type
     procedure ChangeScale(M,D:Integer; isDpiChange:Boolean); override;
   public
     constructor Create(AOwner:TComponent); override;
+    constructor CreateForPPI(AOwner:TComponent; DesignPPI:Integer);
     destructor Destroy; override;
     procedure Load(const Pixels:TBytes; Width,Height:Integer; const Settings:string; const Shared:TGraphShared);
     property RecoveryPath:string read FRecoveryPath;
@@ -65,30 +66,38 @@ implementation
 uses Winapi.Windows, Vcl.Controls, System.Math, GraphSettings, DarkEditorTheme, GraphEditorRecovery;
 
 constructor TGraphEditorForm.Create(AOwner:TComponent);
+begin CreateForPPI(AOwner,0); end;
+
+constructor TGraphEditorForm.CreateForPPI(AOwner:TComponent; DesignPPI:Integer);
 const Hints:array[0..4] of string=('全体表示','編集前に戻す','グラフ枠を再配置',
   '文字の位置補正を初期化','直前の要素名配置を元に戻す');
-var Bar:TPanel; B:TToolbarIconButton;
-  I:Integer; L:TLabel;
+var Bar:TPanel; B:TToolbarIconButton; I:Integer; L:TLabel;
+  function S(Value:Integer):Integer;
+  begin Result:=MulDiv(Value,CurrentPPI,96); end;
 begin
-  inherited CreateNew(AOwner); FState:=TGraphEditState.Create; FPreview:=TGraphEditorPreview.Create; ApplyDarkEditor(Self); FBusy:=True;
+  inherited CreateNew(AOwner);
+  FState:=TGraphEditState.Create; FPreview:=TGraphEditorPreview.Create; ApplyDarkEditor(Self); FBusy:=True;
   Caption:='SYNC - グラフ'; Position:=poScreenCenter;
-  ClientWidth:=1280; ClientHeight:=800; Constraints.MinWidth:=1100; Constraints.MinHeight:=740;
-  Font.Name:='Yu Gothic UI'; Font.Size:=10; OnCloseQuery:=Closing;
+  // スタイルと位置の設定で再生成されるハンドルのDPIを先に確定する。
+  HandleNeeded;
+  if DesignPPI>0 then begin ScaleForPPI(DesignPPI); Scaled:=False; end;
+  ClientWidth:=S(1280); ClientHeight:=S(800); Constraints.MinWidth:=S(1100); Constraints.MinHeight:=S(740);
+  Font.Name:='Yu Gothic UI'; Font.Height:=-S(13); OnCloseQuery:=Closing;
   OnResize:=FormResized;
-  Bar:=TPanel.Create(Self); Bar.Parent:=Self; Bar.Align:=alTop; Bar.Height:=56; Bar.BevelOuter:=bvNone;
+  Bar:=TPanel.Create(Self); Bar.Parent:=Self; Bar.Align:=alTop; Bar.Height:=S(56); Bar.BevelOuter:=bvNone;
   for I:=0 to 4 do
   begin
-    B:=TToolbarIconButton.Create(Self); B.Parent:=Bar; B.SetBounds(8+I*42,6,36,36);
+    B:=TToolbarIconButton.Create(Self); B.Parent:=Bar; B.SetBounds(S(8+I*42),S(6),S(36),S(36));
     B.Tag:=I; B.Hint:=Hints[I]; B.OnDrawIcon:=DrawIcon; B.OnClick:=ActionClick;
   end;
-  L:=TLabel.Create(Self); L.Parent:=Bar; L.AutoSize:=False; L.SetBounds(226,8,1020,40); L.Anchors:=[akLeft,akTop,akRight]; L.WordWrap:=True;
+  L:=TLabel.Create(Self); L.Parent:=Bar; L.AutoSize:=False; L.SetBounds(S(226),S(8),S(1020),S(40)); L.Anchors:=[akLeft,akTop,akRight]; L.WordWrap:=True;
   L.Caption:='グラフ・文字の枠内で移動 / 周囲8点でサイズ変更 / Ctrl+ドラッグ・中ボタンで画面移動 / ホイールで倍率 / ×で採用';
   FHelp:=L;
   FTextToolbar:=TGraphTextToolbar.Create(Self); FTextToolbar.Parent:=Bar;
-  FTextToolbar.SetBounds(226,6,780,44); FTextToolbar.OnChange:=TextStyleChanged;
+  FTextToolbar.SetBounds(S(226),S(6),S(780),S(44)); FTextToolbar.OnChange:=TextStyleChanged;
   FTextToolbar.OnColorTargetChange:=TextColorTargetChanged;
   FError:=TLabel.Create(Self); FError.Parent:=Self; FError.Align:=alBottom;
-  FError.AutoSize:=False; FError.Height:=28; FError.Font.Color:=$008080FF;
+  FError.AutoSize:=False; FError.Height:=S(28); FError.Font.Color:=$008080FF;
   FSettingsPane:=TGraphSettingsPane.Create(Self); FSettingsPane.Parent:=Self;
   FPicker:=FSettingsPane.Picker;
   FPicker.OnChange:=PickerChanged;
@@ -118,6 +127,7 @@ Bar:=FMenu.AddItem('',I*32,FormatPreset); Bar.Tag:=I;
   end;
   FMenuGroup:=TVectArtDarkMenuGroup.Create(Self); FMenuGroup.RegisterMenu(FMenu);
   FLayout.ValueFormatEdit.OnContextPopup:=FormatMenu;
+  FormResized(nil);
   FBusy:=False;
 end;
 

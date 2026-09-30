@@ -39,6 +39,8 @@ implementation
 uses System.SysUtils, System.Math, Vcl.Graphics, Winapi.Windows;
 constructor TGraphStylePanel.Create(AOwner:TComponent);
 var I:Integer; L:TLabel;
+  function S(Value:Integer):Integer;
+  begin Result:=MulDiv(Value,CurrentPPI,96); end;
   function Swatch(Tag:Integer):TPanel;
   begin
     Result:=TPanel.Create(Self); Result.Parent:=Self; Result.Tag:=Tag;
@@ -55,15 +57,15 @@ var I:Integer; L:TLabel;
 begin
   inherited;
   if AOwner is TWinControl then Parent:=TWinControl(AOwner);
-  Width:=290; Height:=620; BevelOuter:=bvNone; Color:=$00303030;
-  L:=TLabel.Create(Self); L.Parent:=Self; L.Caption:='線（色・太さ・線種）'; L.SetBounds(12,8,272,24);
+  Width:=S(290); Height:=S(620); BevelOuter:=bvNone; Color:=$00303030;
+  L:=TLabel.Create(Self); L.Parent:=Self; L.Caption:='線（色・太さ・線種）'; L.SetBounds(S(12),S(8),S(272),S(24));
   for I:=0 to 5 do
   begin
     FLabels[I]:=TLabel.Create(Self); FLabels[I].Parent:=Self;
     FColors[I]:=Swatch(I); FOutlineColors[I]:=Swatch(I+6);
     FWidths[I]:=Slider(I); FOutlineWidths[I]:=Slider(I+6);
     FKinds[I]:=TComboBox.Create(Self); FKinds[I].Parent:=Self; FKinds[I].Tag:=I;
-    FKinds[I].Style:=csOwnerDrawFixed; FKinds[I].ItemHeight:=28; FKinds[I].DropDownWidth:=160;
+    FKinds[I].Style:=csOwnerDrawFixed; FKinds[I].ItemHeight:=S(28); FKinds[I].DropDownWidth:=S(160);
     FKinds[I].Color:=$00303030; FKinds[I].Font.Color:=$00EEEEEE;
     FKinds[I].Items.Add('なし'); FKinds[I].Items.Add('実線');
     FKinds[I].Items.Add('破線'); FKinds[I].Items.Add('点線');

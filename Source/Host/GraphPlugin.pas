@@ -39,7 +39,7 @@ begin
     if Contexts<>nil then
     begin
       Context:=Contexts.FindByObjectLocation(Location.Layer,Location.StartFrame,Location.EndFrame);
-      if Context<>nil then Context.Capture.CopyRgba(Pixels,W,H,Status);
+      if Context<>nil then Context.CopyBackground(Pixels,W,H,Status);
     end;
     PreviousDpi:=SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     try
@@ -60,7 +60,7 @@ begin
   begin
     RegisterGraphParameters(OpenSettings);
     SetupPluginTable(FILTER_FLAG_VIDEO or FILTER_FLAG_FILTER,GraphEffectName,'SYNC',
-      'グラフ / N角形・折れ線・棒・円 v0.2',ProcessVideo,nil);
+      'グラフ / 棒・折れ線・円・レーダーチャート v0.2',ProcessVideo,nil);
   end;
   Result:=@GTable;
 end;

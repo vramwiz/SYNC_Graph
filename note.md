@@ -129,3 +129,5 @@ Debug／Releaseともプロジェクト直下にDLLを生成する。標準の�
 - ユニットは用途別に整理済み。`Source/Rendering/Charts` はグラフ種類別描画、`Source/UI/Settings/Panels` は設定群、`Source/UI/Settings/Controls` は数値入力、`Source/Editor/Interaction` は文字装飾ハンドル。`GraphView` は選択とドラッグの接続を担当し、装飾値の計算・描画は `GraphTextDecorations` に分離した。新しいユニットを増やす際は所属フォルダと `SYNC_Graph_Filter.dproj` の検索パスを確認する。テストスクリプトは `Source` 以下のフォルダを再帰的に検索する。
 - 最終確認はWin64 Debug／Releaseビルド、GraphTests 51項目、EditorSmoke、PluginSmokeで成功。コンパイラ警告・エラーは0、`git -c core.safecrlf=false diff --check` も成功。実AviUtl2でのキーフレーム操作と見た目はユーザー確認範囲であり、自動検証では未実施。
 - `Apu2/sample.aup2` と未追跡の `グラフプラグイン_アニメーション仕様検討.md` はユーザーの作業を含むため、再開時に上書きしない。既存差分はコミットせず保持している。
+
+完成時の分離: スナップ表示はEditor/Preview/GraphSnapGuides、文字変形はEditor/Interaction/GraphTextTransformへ委譲する。GraphViewは選択・入力・ドラッグ開始時点の状態とイベント接続を担当する。

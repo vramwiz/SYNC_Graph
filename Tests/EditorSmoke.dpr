@@ -2,10 +2,10 @@
 {$APPTYPE CONSOLE}
 // フォーム生成とモデル読み込みのスモークテスト。実ホスト操作とは区別する。
 uses System.JSON, System.IOUtils, System.Classes, System.SysUtils, System.Types, Vcl.Forms, GraphEditorForm, GraphModel,
-  GraphSettings, GraphView, GraphPainter, GraphTextToolbar, ToolbarIconButton,
+  GraphSettings, GraphView, GraphPainter, GraphRenderer, GraphAnimation, GraphTextToolbar, ToolbarIconButton,
   DarkComboBox, ColorPickerHueBar, ColorPickerSVArea, ColorPickerPanel,
   VerticalScrollBarControl, GraphNumberEdit, GraphLayoutPanel, GraphDataPanel,
-  GraphStylePanel, GraphColorStylePanel, GraphSettingsPane,
+  GraphStylePanel, GraphColorStylePanel, GraphSettingsPane, GraphTextSnap,
   HorizontalTrackBarControl,
   Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.Controls, Winapi.Windows,
   Winapi.Messages, GraphHostSettings, AviUtl2FilterTypes, Vcl.Graphics, Vcl.ComCtrls;
@@ -240,6 +240,123 @@ begin
   if string(Item)='値' then StoredValues:=UTF8String(Value);
   Result:=True;
 end;
+procedure CheckLegendInteraction;
+var Form:TForm; View:TGraphView; Doc:TGraphDocument; Labels:TArray<TGraphLabel>;
+  L:TGraphLabel; Pixels:TBytes; Shared:TGraphShared; X,Y:Integer;
+begin
+  Form:=TForm.CreateNew(nil); Doc:=TGraphDocument.Create;
+  try
+    Form.ClientWidth:=640; Form.ClientHeight:=480;
+    View:=TGraphView.Create(Form); View.Parent:=Form; View.SetBounds(0,0,640,480);
+    Doc.Kind:=gkBar; Doc.Bounds:=RectF(80,100,500,350); Doc.NameLayout:=2;
+    Shared:=DefaultShared; Shared.Values:='1,2,3'#13#10'2,3,4'#13#10'3,4,5';
+    Pixels:=RenderGraph(Doc,Shared,Default(TGraphAnimation),640,480,Labels);
+    View.Bind(Doc,Labels); View.SetView(1,0,0);
+    X:=-1; Y:=-1;
+    for L in Labels do if (L.ID=2) and L.HasLegend then
+    begin X:=Round(L.LegendBounds.CenterPoint.X); Y:=Round(L.LegendBounds.CenterPoint.Y); end;
+    if X<0 then raise Exception.Create('Legend drag target missing');
+    Form.Show; Application.ProcessMessages;
+    View.Perform(WM_LBUTTONDOWN,MK_LBUTTON,MakeLParam(X,Y));
+    View.Perform(WM_MOUSEMOVE,MK_LBUTTON,MakeLParam(X+28,Y+14));
+    View.Perform(WM_LBUTTONUP,0,MakeLParam(X+28,Y+14));
+    if (Abs(Doc.LegendOffsets[0].X-0.2)>0.01) or
+      (Abs(Doc.LegendOffsets[0].Y-0.5)>0.01) then
+      raise Exception.Create('Legend drag did not update relative position');
+    if (Doc.Offsets[2].X<>0) or (Doc.Offsets[2].Y<>0) or (Doc.LabelScales[2]<>1) then
+      raise Exception.Create('Legend drag moved or resized its parent text');
+    Writeln('PASS legend mark drag edits relative offset and preserves parent text');
+  finally Form.Free; Doc.Free; end;
+end;
+procedure CheckTextSnapping;
+var Doc:TGraphDocument; Labels:TArray<TGraphLabel>; B:TRectF; Scale:Single; Feedback:TTextSnapFeedback;
+begin
+  Doc:=TGraphDocument.Create;
+  try
+    SetLength(Labels,2);
+    Labels[0].ID:=2; Labels[0].Role:=trName; Labels[0].Bounds:=RectF(20,40,80,60);
+    Labels[1].ID:=3; Labels[1].Role:=trName; Labels[1].Bounds:=RectF(100,100,160,120);
+    B:=SnapTextBounds(RectF(92,45,152,65),2,Labels,10,@Feedback);
+    if not Feedback.HasX or (Abs(Feedback.X-100)>0.01) then
+      raise Exception.Create('Position snap guide is wrong');
+    if Abs(B.Left-100)>0.01 then raise Exception.Create('Text horizontal snap failed');
+    B:=SnapTextBounds(RectF(90,85,150,105),2,Labels,6);
+    if (Abs(B.Left-90)>0.01) or (Abs(B.Top-85)>0.01) then
+      raise Exception.Create('Text snap did not release outside tolerance');
+    Doc.LabelScales[3]:=2;
+    Scale:=SnapTextScale(1.9,2,trName,Doc,Labels,@Feedback);
+    if Feedback.SizeID<>3 then raise Exception.Create('Size snap target is wrong');
+    if Abs(Scale-2)>0.01 then raise Exception.Create('Text size equality snap failed');
+    Scale:=SnapTextScale(1.8,2,trName,Doc,Labels);
+    if Abs(Scale-1.8)>0.01 then raise Exception.Create('Text size snap did not release');
+    Labels[1].Role:=trTitle; Doc.TextStyles[trTitle].Size:=40;
+    Doc.TextStyles[trName].Size:=20; Doc.LabelScales[3]:=1;
+    Scale:=SnapTextScale(1.9,2,trName,Doc,Labels,@Feedback);
+    if Feedback.SizeID<>3 then raise Exception.Create('Size snap target is wrong');
+    if Abs(Scale-2)>0.01 then raise Exception.Create('Text snap ignored role font size');
+    SetLength(Labels,3);
+    Labels[0].ID:=2; Labels[0].Role:=trName; Labels[0].Bounds:=RectF(20,40,80,60);
+    Labels[1].ID:=3; Labels[1].Role:=trName; Labels[1].Bounds:=RectF(120,40,180,60);
+    Labels[2].ID:=4; Labels[2].Role:=trName; Labels[2].Bounds:=RectF(215,40,275,60);
+    B:=SnapTextBounds(Labels[2].Bounds,4,Labels,10,@Feedback);
+    if Abs(B.CenterPoint.X-250)>0.01 then raise Exception.Create('Equal spacing extension failed');
+    if not Feedback.Spacing or not Feedback.Horizontal then raise Exception.Create('Spacing arrows missing');
+    B:=SnapTextBounds(RectF(75,40,135,60),4,Labels,10,@Feedback);
+    if Abs(B.CenterPoint.X-100)>0.01 then raise Exception.Create('Equal spacing insertion failed');
+    Labels[1].Bounds:=RectF(20,140,80,160);
+    B:=SnapTextBounds(RectF(20,235,80,255),4,Labels,10,@Feedback);
+    if Abs(B.CenterPoint.Y-250)>0.01 then raise Exception.Create('Vertical equal spacing failed');
+    B:=SnapTextBounds(RectF(215,240,275,260),4,Labels,10,@Feedback);
+    if Abs(B.CenterPoint.X-245)>0.01 then raise Exception.Create('Unaligned text snapped to spacing');
+    Labels[0].HasLegend:=True; Labels[0].LegendBounds:=RectF(20,40,40,60);
+    Labels[1].HasLegend:=True; Labels[1].LegendBounds:=RectF(120,40,140,60);
+    Labels[2].HasLegend:=True; Labels[2].LegendBounds:=RectF(215,40,235,60);
+    B:=SnapLegendBounds(Labels[2].LegendBounds,4,Labels,10,@Feedback);
+    if (Abs(B.CenterPoint.X-230)>0.01) or not Feedback.Spacing then
+      raise Exception.Create('Legend equal spacing snap failed');
+    B:=SnapLegendBounds(RectF(117,100,137,120),4,Labels,10,@Feedback);
+    if (Abs(B.Left-120)>0.01) or not Feedback.HasX then
+      raise Exception.Create('Legend coordinate snap failed');
+    Writeln('PASS legend mark coordinate and equal spacing snap');
+    Writeln('PASS equal text spacing horizontal, vertical, insertion and unrelated row');
+    Writeln('PASS text position and font size snapping, release and different roles');
+  finally Doc.Free; end;
+end;
+procedure CheckInitialDpi;
+var Form:TGraphEditorForm; Layout:TGraphLayoutPanel; Data:TGraphDataPanel;
+  Picker:TColorPickerPanel; Ppi,I:Integer;
+  {$IFDEF GRAPH_SNAPSHOT}Shot:TBitmap;{$ENDIF}
+begin
+  for Ppi in [96,144,192] do
+  begin
+    Form:=TGraphEditorForm.CreateForPPI(nil,Ppi);
+    try
+      Form.Load(nil,640,480,'',DefaultShared);
+      Layout:=FindLayout(Form); Data:=FindData(Form); Picker:=FindPicker(Form);
+      if (Form.CurrentPPI<>Ppi) or (Layout.Height<>MulDiv(480,Ppi,96)) or
+        (Picker.Parent.Width<>MulDiv(312,Ppi,96)) or
+        (Picker.Height<>MulDiv(224,Ppi,96)) then
+        raise Exception.CreateFmt('Initial DPI panel dimensions at %d: form=%d layout=%d pane=%d picker=%d',[Ppi,Form.CurrentPPI,Layout.Height,Picker.Parent.Width,Picker.Height]);
+      for I:=0 to Layout.ControlCount-1 do
+        if Layout.Controls[I] is TDarkComboBox then
+          if (Layout.Controls[I].Top=MulDiv(36,Ppi,96)) and
+            (Layout.Controls[I].Width<>MulDiv(272,Ppi,96)) then
+            raise Exception.CreateFmt('Initial DPI graph selector is wrong at %d',[Ppi]);
+      for I:=0 to Data.ControlCount-1 do
+        if Data.Controls[I] is TEdit then
+          if (Data.Controls[I].Top=MulDiv(66,Ppi,96)) and
+            (Data.Controls[I].Width<>MulDiv(272,Ppi,96)) then
+            raise Exception.CreateFmt('Initial DPI title width is wrong at %d',[Ppi]);
+      {$IFDEF GRAPH_SNAPSHOT}
+      Form.Show; Form.Update; Application.ProcessMessages;
+      Shot:=Form.GetFormImage;
+      try Shot.SaveToFile(ExtractFilePath(ParamStr(0))+Format('editor-initial-%d.bmp',[Ppi]));
+      finally Shot.Free; end;
+      {$ENDIF}
+    finally Form.Free; end;
+  end;
+  Writeln('PASS initial DPI 100/150/200 percent construction');
+end;
 var F:TGraphEditorForm; D:TGraphDocument; S:TGraphShared; I:Integer;
   Edit:TEDIT_SECTION; K:TGraphKind; View:TGraphView;
   TestLabels:TArray<TGraphLabel>; IconX,IconY:Integer;
@@ -255,10 +372,14 @@ var F:TGraphEditorForm; D:TGraphDocument; S:TGraphShared; I:Integer;
   WidthSlider:THorizontalTrackBarControl; LineKind:TComboBox;
   WheelEdit:TGraphNumberEdit; ActiveNumberEdit:TEdit; WheelPoint:TPoint;
   OldPosition:Integer; PreviewTimer:TTimer; OutlineSwatch:TPanel; OutlineSlider:THorizontalTrackBarControl;
-  {$IFDEF GRAPH_SNAPSHOT}Shot:TBitmap; Ppi:Integer;{$ENDIF}
+  Ppi:Integer;
+  {$IFDEF GRAPH_SNAPSHOT}Shot:TBitmap;{$ENDIF}
 begin
   try
     Application.Initialize;
+    CheckLegendInteraction;
+    CheckTextSnapping;
+    CheckInitialDpi;
     CheckInvalidClose;
     F:=TGraphEditorForm.Create(nil);
     try
@@ -659,6 +780,22 @@ begin
         View.Perform(WM_LBUTTONUP,0,MakeLParam(IconX,IconY));
         if Toolbar.Visible then raise Exception.Create('Text toolbar stayed visible for graph');
         Writeln('PASS text toolbar selection and bold action');
+        // DPI変更後の再読込でも、動的な入力行と設定欄の基準寸法を保つ。
+        for Ppi in [144,192,96] do
+        begin
+          F.ScaleForPPI(Ppi);
+          F.Load(nil,640,360,SaveGraph(D),S);
+          Layout:=FindLayout(F); Data:=FindData(F);
+          Picker:=FindPicker(F);
+          if (Layout.Height<>MulDiv(480,Ppi,96)) or
+            (Picker.Parent.Width<>MulDiv(312,Ppi,96)) then
+            raise Exception.CreateFmt('DPI panel dimensions are wrong at %d',[Ppi]);
+          for I:=0 to Data.ControlCount-1 do
+            if (Data.Controls[I] is TEdit) and (Data.Controls[I].Left=MulDiv(40,Ppi,96)) then
+              if Data.Controls[I].Width<>MulDiv(90,Ppi,96) then
+                raise Exception.CreateFmt('DPI row width is wrong at %d',[Ppi]);
+        end;
+        Writeln('PASS DPI 150/200/100 percent and dynamic row reload');
         F.Hide;
                 {$IFDEF GRAPH_SNAPSHOT}
         F.Show;

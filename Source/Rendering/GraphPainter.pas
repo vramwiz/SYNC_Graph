@@ -4,19 +4,20 @@
 interface
 uses System.Types, System.UITypes, System.Skia, System.Generics.Collections, GraphModel;
 type
-  TGraphLabel = record ID:Integer; Role:TTextRole; Bounds:TRectF; end;
+  TGraphLabel = record ID:Integer; Role:TTextRole; Bounds,LegendBounds:TRectF; HasLegend:Boolean; end;
   TGraphTextCommand = record
     Value:string;
     Role:TTextRole;
     ID:Integer;
     Position:TPointF;
     Alpha:Single;
+    LegendColor:TAlphaColor;
   end;
   TGraphPainter = class
   private
     FTexts:TList<TGraphTextCommand>;
     procedure DrawText(const Value:string; Role:TTextRole; ID:Integer;
-      const Position:TPointF; Alpha:Single);
+      const Position:TPointF; Alpha:Single; LegendColor:TAlphaColor);
   public
     // 呼出側のSurfaceから受け取る参照。Docは借用し、Labels・文字キューは本クラスが所有する。
     Canvas: ISkCanvas;
@@ -32,7 +33,7 @@ type
     procedure Box(const R:TRectF; Fill,Stroke:TAlphaColor; Alpha:Single=1; Pattern:Integer=1);
     procedure Marker(const P:TPointF; Kind:Integer; Color:TAlphaColor; Alpha:Single);
     procedure Text(const Value:string; Role:TTextRole; ID:Integer;
-      const Position:TPointF; Alpha:Single=1);
+      const Position:TPointF; Alpha:Single=1; LegendColor:TAlphaColor=0);
     procedure FlushText;
     function Paint(Color:TAlphaColor; Alpha:Single=1):ISkPaint;
   end;
@@ -113,14 +114,14 @@ begin
 end;
 
 procedure TGraphPainter.Text(const Value:string; Role:TTextRole; ID:Integer;
-  const Position:TPointF; Alpha:Single);
+  const Position:TPointF; Alpha:Single; LegendColor:TAlphaColor);
 var Command:TGraphTextCommand;
 begin
   if (Value='') or (Alpha<=0) then Exit;
   if ((OnlyLabelID>=0) and (ID<>OnlyLabelID)) or (ID=ExcludeLabelID) and (ExcludeLabelID>=0) then Exit;
   // 文字の座標・透明度を保持し、全グラフ形状の描画後にまとめて重ねる。
   Command.Value:=Value; Command.Role:=Role; Command.ID:=ID;
-  Command.Position:=Position; Command.Alpha:=Alpha; FTexts.Add(Command);
+  Command.LegendColor:=LegendColor; Command.Position:=Position; Command.Alpha:=Alpha; FTexts.Add(Command);
 end;
 procedure TGraphPainter.FlushText;
 var Command:TGraphTextCommand;
@@ -128,13 +129,13 @@ begin
   // Canvasの変換・クリップが有効な間に呼ぶ。キューは1フレームだけ保持する。
   try
     for Command in FTexts do
-      DrawText(Command.Value,Command.Role,Command.ID,Command.Position,Command.Alpha);
+      DrawText(Command.Value,Command.Role,Command.ID,Command.Position,Command.Alpha,Command.LegendColor);
   finally FTexts.Clear; end;
 end;
 procedure TGraphPainter.DrawText(const Value:string; Role:TTextRole; ID:Integer;
-  const Position:TPointF; Alpha:Single);
+  const Position:TPointF; Alpha:Single; LegendColor:TAlphaColor);
 var S:TTextStyle; FS:TSkFontStyle; Runs:TArray<TGraphFontRun>; Run:TGraphFontRun;
-  P:ISkPaint; X,Y,W:Single; L:TGraphLabel; Weight:Integer; Slant:TSkFontSlant;
+  P:ISkPaint; X,Y,W,MX,MY:Single; L:TGraphLabel; Weight:Integer; Slant:TSkFontSlant;
   procedure DrawRuns(DX,DY:Single; const Paint:ISkPaint);
   var R:TGraphFontRun; Offset:Single;
   begin
@@ -171,6 +172,19 @@ begin
   end;
   DrawRuns(0,0,Paint(S.Color,Alpha));
   if ID>=0 then
-  begin L.ID:=ID; L.Role:=Role; L.Bounds:=RectF(X,Y-S.Size,W+X,Y+S.Size*0.25); Labels.Add(L); end;
+  begin
+    L:=Default(TGraphLabel); L.ID:=ID; L.Role:=Role;
+    L.Bounds:=RectF(X,Y-S.Size,W+X,Y+S.Size*0.25);
+    if (LegendColor<>0) and (ID>=2) and (ID<2+MaxGraphRows) then
+    begin
+      // 色印の相対位置と寸法を実文字サイズで換算し、個別倍率・分類のサイズに同時追従させる。
+      MX:=X+Doc.LegendOffsets[ID-2].X*S.Size;
+      MY:=L.Bounds.CenterPoint.Y+Doc.LegendOffsets[ID-2].Y*S.Size;
+      L.HasLegend:=True; L.LegendBounds:=RectF(MX-S.Size*0.35,MY-S.Size*0.25,
+        MX+S.Size*0.35,MY+S.Size*0.25);
+      Canvas.DrawRect(L.LegendBounds,Paint(LegendColor,Alpha));
+    end;
+    Labels.Add(L);
+  end;
 end;
 end.

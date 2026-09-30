@@ -69,6 +69,13 @@ begin
         S:=TJSONObject.Create; A.AddElement(S);
         Number(S,'id',I); Number(S,'scale',Doc.LabelScales[I]);
       end;
+    A:=TJSONArray.Create; O.AddPair('legendOffsets',A);
+    for I:=0 to High(Doc.LegendOffsets) do
+      if (Abs(Doc.LegendOffsets[I].X+0.8)>0.00001) or (Doc.LegendOffsets[I].Y<>0) then
+      begin
+        S:=TJSONObject.Create; A.AddElement(S); Number(S,'id',I);
+        Number(S,'x',Doc.LegendOffsets[I].X); Number(S,'y',Doc.LegendOffsets[I].Y);
+      end;
     Result:=O.ToJSON;
   finally O.Free; end;
 end;
@@ -173,6 +180,16 @@ begin
         begin
           S:=A.Items[I] as TJSONObject; ID:=Trunc(N(S,'id',0,0,High(Result.Offsets)));
           Result.Offsets[ID]:=PointF(N(S,'x',0,-100000,100000),N(S,'y',0,-100000,100000));
+        end;
+      end;
+      if O.GetValue('legendOffsets') is TJSONArray then
+      begin
+        A:=O.GetValue<TJSONArray>('legendOffsets');
+        if A.Count>MaxGraphRows then raise EConvertError.Create('凡例位置が多すぎます。');
+        for I:=0 to A.Count-1 do
+        begin
+          S:=A.Items[I] as TJSONObject; ID:=Trunc(N(S,'id',0,0,MaxGraphRows-1));
+          Result.LegendOffsets[ID]:=PointF(N(S,'x',-0.8,-10000,10000),N(S,'y',0,-10000,10000));
         end;
       end;
       if O.GetValue('labelScales') is TJSONArray then

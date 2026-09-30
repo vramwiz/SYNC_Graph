@@ -1,0 +1,59 @@
+[
+  {
+    "id": "VRAMWIZ.SYNC_Graph",
+    "name": "SYNC グラフ",
+    "type": "フィルタプラグイン",
+    "summary": "折れ線・棒・円・N角形グラフを作成・編集",
+    "description": "https://raw.githubusercontent.com/vramwiz/SYNC_Graph/main/README.md",
+    "author": "VRAMの魔術師",
+    "repoURL": "https://github.com/vramwiz/SYNC_Graph/",
+    "licenses": [
+      {
+        "type": "不明",
+        "isCustom": true,
+        "copyrights": [],
+        "licenseBody": ""
+      }
+    ],
+    "tags": [
+      "グラフ",
+      "図形",
+      "アニメーション"
+    ],
+    "dependencies": [],
+    "images": [],
+    "installer": {
+      "source": {
+        "type": "githubRelease",
+        "owner": "vramwiz",
+        "repo": "SYNC_Graph",
+        "pattern": "^SYNC_Graph\\.zip$",
+        "github": {
+          "owner": "vramwiz",
+          "repo": "SYNC_Graph",
+          "pattern": "^SYNC_Graph\\.zip$"
+        }
+      },
+      "install": [
+        {
+          "action": "download"
+        },
+        {
+          "action": "extract"
+        },
+        {
+          "action": "copy",
+          "from": "{tmp}/SYNC_Graph",
+          "to": "{pluginsDir}/SYNC_Graph"
+        }
+      ],
+      "uninstall": [
+        {
+          "action": "delete",
+          "path": "{pluginsDir}/SYNC_Graph"
+        }
+      ]
+    },
+    "version": []
+  }
+]

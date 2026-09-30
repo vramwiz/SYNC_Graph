@@ -3,7 +3,7 @@
         <ProjectGuid>{0B09D630-B788-46FF-8B62-0FBC79BA0439}</ProjectGuid>
         <ProjectVersion>20.4</ProjectVersion>
         <FrameworkType>None</FrameworkType>
-        <Config Condition="'$(Config)'==''">Debug</Config>
+        <Config Condition="'$(Config)'==''">Release</Config>
         <Platform Condition="'$(Platform)'==''">Win64</Platform>
         <ProjectName Condition="'$(ProjectName)'==''">SYNC_Graph_Filter</ProjectName>
         <TargetedPlatforms>2</TargetedPlatforms>
@@ -98,4 +98,22 @@
     <Import Project="$(BDS)\Bin\CodeGear.Delphi.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Delphi.Targets')"/>
     <Import Project="$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj" Condition="Exists('$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj')"/>
     <Import Project="$(MSBuildProjectName).deployproj" Condition="Exists('$(MSBuildProjectName).deployproj')"/>
+    <PropertyGroup Condition="'$(Config)'=='Debug' And '$(Platform)'=='Win64'">
+        <PreBuildEvent>if not exist &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Graph&quot; mkdir &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Graph&quot;</PreBuildEvent>
+        <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
+        <PreLinkEvent/>
+        <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
+        <PostBuildEvent>copy /Y &quot;$(MSBuildProjectDirectory)\$(PROJECTNAME).dll&quot; &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Graph\$(PROJECTNAME).auf2&quot;&amp;&amp;copy /Y &quot;$(MSBuildProjectDirectory)\Lib\Skia\Win64\sk4d.dll&quot; &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Graph\sk4d.dll&quot;&amp;&amp;del /Q &quot;$(MSBuildProjectDirectory)\$(PROJECTNAME).dll&quot;</PostBuildEvent>
+        <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
+        <PostBuildEventExecuteWhen>Always</PostBuildEventExecuteWhen>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Config)'=='Release' And '$(Platform)'=='Win64'">
+        <PreBuildEvent>if not exist &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Graph&quot; mkdir &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Graph&quot;</PreBuildEvent>
+        <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
+        <PreLinkEvent/>
+        <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
+        <PostBuildEvent>copy /Y &quot;$(MSBuildProjectDirectory)\$(PROJECTNAME).dll&quot; &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Graph\$(PROJECTNAME).auf2&quot;&amp;&amp;copy /Y &quot;$(MSBuildProjectDirectory)\Lib\Skia\Win64\sk4d.dll&quot; &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Graph\sk4d.dll&quot;&amp;&amp;del /Q &quot;$(MSBuildProjectDirectory)\$(PROJECTNAME).dll&quot;</PostBuildEvent>
+        <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
+        <PostBuildEventExecuteWhen>Always</PostBuildEventExecuteWhen>
+    </PropertyGroup>
 </Project>

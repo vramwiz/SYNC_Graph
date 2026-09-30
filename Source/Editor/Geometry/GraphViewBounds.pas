@@ -41,22 +41,32 @@ end;
 
 function HitBoundsHandle(const Bounds:TRectF; X,Y:Integer;
   PanX,PanY,Zoom:Single):Integer;
-var L,T,R,D,CX,CY:Integer;
+var L,T,R,D,CX,CY,I,HX,HY:Integer; Radius:Single;
+  Distance,Nearest:Int64;
 begin
   Result:=-3;
+  // シーン上の同じ距離を判定幅にし、表示ズームに比例させる。
+  Radius:=8*Abs(Zoom);
   L:=Round(PanX+Bounds.Left*Zoom); T:=Round(PanY+Bounds.Top*Zoom);
   R:=Round(PanX+Bounds.Right*Zoom); D:=Round(PanY+Bounds.Bottom*Zoom);
   CX:=(L+R) div 2; CY:=(T+D) div 2;
-  if (Abs(X-L)<=7) and (Abs(Y-T)<=7) then Result:=0
-  else if (Abs(X-CX)<=7) and (Abs(Y-T)<=7) then Result:=1
-  else if (Abs(X-R)<=7) and (Abs(Y-T)<=7) then Result:=2
-  else if (Abs(X-L)<=7) and (Abs(Y-CY)<=7) then Result:=3
-  else if (Abs(X-R)<=7) and (Abs(Y-CY)<=7) then Result:=4
-  else if (Abs(X-L)<=7) and (Abs(Y-D)<=7) then Result:=5
-  else if (Abs(X-CX)<=7) and (Abs(Y-D)<=7) then Result:=6
-  else if (Abs(X-R)<=7) and (Abs(Y-D)<=7) then Result:=7;
+  Nearest:=High(Int64);
+  for I:=0 to 7 do
+  begin
+    case I of
+      0,3,5:HX:=L;
+      1,6:HX:=CX;
+    else HX:=R; end;
+    case I of
+      0,1,2:HY:=T;
+      3,4:HY:=CY;
+    else HY:=D; end;
+    if (Abs(X-HX)>Radius) or (Abs(Y-HY)>Radius) then Continue;
+    Distance:=Sqr(Int64(X)-HX)+Sqr(Int64(Y)-HY);
+    // 小さい文字枠では判定範囲が重なるため、最も近いハンドルを選ぶ。
+    if Distance<Nearest then begin Nearest:=Distance; Result:=I; end;
+  end;
 end;
-
 procedure ResizeBoundsHandle(var Bounds:TRectF; Handle:Integer;
   const Delta:TPointF; Minimum:Single);
 begin

@@ -12,13 +12,18 @@ type
   PTrack=^TFILTER_ITEM_TRACK;
   TSelectItems=array[0..5] of TFILTER_ITEM_SELECT_ITEM;
   PSelectItems=^TSelectItems;
-var Table:PFILTER_PLUGIN_TABLE; Calls:Integer; Output:TBytes;
+var Table:PFILTER_PLUGIN_TABLE; Calls,GpuCalls:Integer; Output:TBytes;
 procedure GetImage(Buffer:PPIXEL_RGBA); cdecl;
 var I:Integer; P:PByte;
 begin
   P:=PByte(Buffer);
   for I:=0 to 640*480-1 do
   begin P[0]:=0; P[1]:=0; P[2]:=40; P[3]:=255; Inc(P,4); end;
+end;
+function UnexpectedGpuAccess:Pointer; cdecl;
+begin
+  Result:=nil;
+  Inc(GpuCalls);
 end;
 procedure SetImage(Buffer:PPIXEL_RGBA; W,H:Integer); cdecl;
 begin
@@ -75,6 +80,8 @@ begin
       Obj:=Default(TOBJECT_INFO); Obj.ID:=1; Obj.EffectID:=2; Obj.Width:=640; Obj.Height:=480;
       Video:=Default(TFILTER_PROC_VIDEO); Video.Scene:=@Scene; Video.Object_:=@Obj;
       Video.GetImageData:=GetImage; Video.SetImageData:=SetImage;
+      Video.GetFramebufferTexture2D:=UnexpectedGpuAccess;
+      Video.GetImageTexture2D:=UnexpectedGpuAccess;
       D:=TGraphDocument.Create;
       try
         D.ResetBounds(640,480); S:=DefaultShared;
@@ -116,6 +123,16 @@ begin
         if Output[(200*640+110)*4]=0 then
           raise Exception.Create('Host zoom did not expand the bar');
         Writeln('PASS host animation progress and focus zoom');
+        Calls:=0;
+        for I:=0 to 299 do
+        begin
+          Progress^.Value:=I mod 101;
+          if Table^.Func_Proc_Video(@Video)<>1 then
+            raise Exception.Create('Repeated playback callback failed');
+        end;
+        if Calls<>300 then raise Exception.Create('Repeated playback output missing');
+        if GpuCalls<>0 then raise Exception.Create('Host GPU callback was used');
+        Writeln('PASS repeated playback without host GPU access');
       finally D.Free; end;
     finally Done; end;
   finally FreeLibrary(Lib); end;

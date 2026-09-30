@@ -87,9 +87,9 @@ begin
       1: A:=PointF(B.Right+95,B.Top+R*38+30);
       2: A:=PointF(B.Left+R*150+75,B.Top-20);
     else A:=PointF(B.Left+R*150+75,B.Bottom+65); end;
-    if D.Kind=gkBar then P.Marker(PointF(A.X-60,A.Y-8),1,Style.FillColor,NameAlpha)
-    else P.Marker(PointF(A.X-60,A.Y-8),1,Style.LineColor,NameAlpha);
-    P.Text(ElementName(Shared.Names,R),trName,2+R,A,NameAlpha);
+    if D.Kind=gkBar then
+      P.Text(ElementName(Shared.Names,R),trName,2+R,A,NameAlpha,Style.FillColor)
+    else P.Text(ElementName(Shared.Names,R),trName,2+R,A,NameAlpha,Style.LineColor);
   end;
 end;
 end.

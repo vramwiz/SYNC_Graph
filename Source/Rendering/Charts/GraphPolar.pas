@@ -6,15 +6,18 @@ uses GraphModel, GraphValues, GraphAnimation, GraphPainter;
 procedure DrawPolar(P:TGraphPainter; const Shared:TGraphShared;
   const Values:TGraphValues; const Animation:TGraphAnimation);
 implementation
-uses System.Types, System.Math, System.SysUtils;
+uses System.Types, System.Math, System.SysUtils, GraphRadarGeometry;
 
 procedure DrawPolar(P:TGraphPainter; const Shared:TGraphShared;
   const Values:TGraphValues; const Animation:TGraphAnimation);
-var D:TGraphDocument; Center:TPointF; Radius,Angle,Start,Sweep,Total,F,T:Double;
+var Geometry:TGraphRadarGeometry; D:TGraphDocument; Center:TPointF; Radius,Angle,Start,Sweep,Total,F,T:Double;
   Shape,CellAlpha,PairAlpha,FillAlpha:Single; AllStarted:Boolean;
   R,C,I,Steps,Pass:Integer; Points:TArray<TPointF>; S:TGraphScale; Style:TSeriesStyle; Edge:TLineStyle; A,Q:TPointF;
   function Polar(Degrees,Distance:Double):TPointF;
-  begin Result:=PointF(Center.X+Cos(DegToRad(Degrees))*Distance,Center.Y+Sin(DegToRad(Degrees))*Distance); end;
+  begin
+    if D.Kind=gkRadar then Exit(Geometry.PointAt(Degrees,Distance/Radius));
+    Result:=PointF(Center.X+Cos(DegToRad(Degrees))*Distance,Center.Y+Sin(DegToRad(Degrees))*Distance);
+  end;
   procedure DrawRadarAxes;
   var R,I:Integer; T,F,Angle:Double; A:TPointF;
   begin
@@ -43,7 +46,8 @@ begin
   Radius:=Min(D.Bounds.Width,D.Bounds.Height)/2;
   if D.Kind=gkRadar then
   begin
-    if D.Rows<3 then raise EConvertError.Create('N角形は要素数を3以上にしてください。');
+    Geometry:=TGraphRadarGeometry.Fit(D.Bounds,D.Rows,D.Rotation);
+    Center:=Geometry.Center; Radius:=1;
     S:=CalculateScale(D,Values);
     // 面、輪郭、値の順に全データを描き、後の面が先の輪郭を覆うのを防ぐ。
     for Pass:=0 to 2 do
