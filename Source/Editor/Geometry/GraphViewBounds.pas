@@ -1,14 +1,14 @@
 ﻿unit GraphViewBounds;
 
-// グラフ枠と文字枠に共通する8点ハンドルの描画・判定・寸法変更を扱う。
+// グラフ枠・文字枠のハンドルを共通化し、値では四隅だけを描画・判定する。
 interface
 
 uses System.Types, Vcl.Graphics;
 
 procedure DrawBoundsHandles(Canvas:TCanvas; const Bounds:TRectF;
-  PanX,PanY,Zoom:Single);
+  PanX,PanY,Zoom:Single; CornersOnly:Boolean=False);
 function HitBoundsHandle(const Bounds:TRectF; X,Y:Integer;
-  PanX,PanY,Zoom:Single):Integer;
+  PanX,PanY,Zoom:Single; CornersOnly:Boolean=False):Integer;
 procedure ResizeBoundsHandle(var Bounds:TRectF; Handle:Integer;
   const Delta:TPointF; Minimum:Single);
 
@@ -17,7 +17,7 @@ implementation
 uses System.Math;
 
 procedure DrawBoundsHandles(Canvas:TCanvas; const Bounds:TRectF;
-  PanX,PanY,Zoom:Single);
+  PanX,PanY,Zoom:Single; CornersOnly:Boolean);
 var R:TRect; I,HX,HY:Integer;
 begin
   R:=Rect(Round(PanX+Bounds.Left*Zoom),Round(PanY+Bounds.Top*Zoom),
@@ -27,6 +27,7 @@ begin
   Canvas.Brush.Style:=bsSolid; Canvas.Brush.Color:=$00E9B456;
   for I:=0 to 7 do
   begin
+    if CornersOnly and not (I in [0,2,5,7]) then Continue;
     case I of
       0,3,5:HX:=R.Left;
       1,6:HX:=(R.Left+R.Right) div 2;
@@ -40,7 +41,7 @@ begin
 end;
 
 function HitBoundsHandle(const Bounds:TRectF; X,Y:Integer;
-  PanX,PanY,Zoom:Single):Integer;
+  PanX,PanY,Zoom:Single; CornersOnly:Boolean):Integer;
 var L,T,R,D,CX,CY,I,HX,HY:Integer; Radius:Single;
   Distance,Nearest:Int64;
 begin
@@ -53,6 +54,7 @@ begin
   Nearest:=High(Int64);
   for I:=0 to 7 do
   begin
+    if CornersOnly and not (I in [0,2,5,7]) then Continue;
     case I of
       0,3,5:HX:=L;
       1,6:HX:=CX;

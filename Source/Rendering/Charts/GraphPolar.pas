@@ -52,8 +52,8 @@ begin
     // 面、輪郭、値の順に全データを描き、後の面が先の輪郭を覆うのを防ぐ。
     for Pass:=0 to 2 do
     begin
-    // 半透明の面の後に軸・目盛りを重ね、データ数が増えても基準線を見失わない。
-    if Pass=1 then DrawRadarAxes;
+    // 面と全データの輪郭の後に軸・目盛線を重ね、一致する位置でも基準線を見失わない。
+    if Pass=2 then DrawRadarAxes;
     for C:=0 to D.Columns-1 do
     begin
       SetLength(Points,D.Rows); Style:=D.Series[C];

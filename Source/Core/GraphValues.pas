@@ -33,19 +33,22 @@ begin
   if (Rows<1) or (Rows>MaxGraphRows) or (Columns<1) or (Columns>MaxGraphColumns) then
     raise EConvertError.Create('要素数またはデータ数が範囲外です。');
   SetLength(Result,Rows,Columns);
+  // 未入力のセルだけ仮データを使う。同じセルは常に同じ値にし、再生・再読込や
+  // 構造変更で値が揺れないようにする。明示された0は後でそのまま上書きする。
+  for R:=0 to Rows-1 do
+    for C:=0 to Columns-1 do Result[R,C]:=20+((R*3+C*5) mod 8)*10;
   Lines := SplitRows(Text);
   for R := 0 to High(Lines) do
   begin
-    if (R>=Rows) and (Trim(Lines[R])<>'') then
-      raise EConvertError.Create('値の行数が要素数を超えています。');
-    if R>=Rows then Continue;
     Cells := Lines[R].Split([',']);
-    if Length(Cells)>Columns then
-      raise EConvertError.CreateFmt('%d行目の値がデータ数を超えています。',[R+1]);
     for C := 0 to High(Cells) do
     begin
-      if Trim(Cells[C])='' then V:=0
-      else if not TryStrToFloat(Trim(Cells[C]),V,TFormatSettings.Invariant) then
+      if Trim(Cells[C])='' then Continue;
+      if R>=Rows then
+        raise EConvertError.Create('値の行数が要素数を超えています。');
+      if C>=Columns then
+        raise EConvertError.CreateFmt('%d行目の値がデータ数を超えています。',[R+1]);
+      if not TryStrToFloat(Trim(Cells[C]),V,TFormatSettings.Invariant) then
         raise EConvertError.CreateFmt('%d行%d列の値が数値ではありません。',[R+1,C+1]);
       if IsNan(V) or IsInfinite(V) or (Abs(V)>1E12) then
         raise EConvertError.Create('値は有限の数値（絶対値1兆以下）で指定してください。');

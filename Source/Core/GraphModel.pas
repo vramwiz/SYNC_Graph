@@ -73,7 +73,8 @@ begin
   Result.Title := 'グラフ名';
   Result.Names := '要素1'#13#10'要素2'#13#10'要素3';
   Result.Units := '単位';
-  Result.Values := '0,0,0'#13#10'0,0,0'#13#10'0,0,0';
+  // 初期値を未入力にし、仮データとユーザーが指定した0を区別する。
+  Result.Values := '';
 end;
 
 constructor TGraphDocument.Create;

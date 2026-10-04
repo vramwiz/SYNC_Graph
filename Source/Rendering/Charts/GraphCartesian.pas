@@ -22,16 +22,6 @@ var D:TGraphDocument; S:TGraphScale; B:TRectF; R,C,I:Integer;
   end;
 begin
   D:=P.Doc; B:=D.Bounds; S:=CalculateScale(D,Values);
-  T:=Ceil(S.Minimum/S.Step)*S.Step; I:=0;
-  while (T<=S.Maximum+S.Step*0.00001) and (I<=1000) do
-  begin
-    A:=Map(0,T); Q:=Map(1,T); P.Line(A,Q,D.Lines[2]);
-    if D.Horizontal then P.Text(FormatFloat('0.##',T,TFormatSettings.Invariant),trValue,-1,PointF(A.X,B.Bottom+30))
-    else P.Text(FormatFloat('0.##',T,TFormatSettings.Invariant),trValue,-1,PointF(B.Left-45,A.Y+8));
-    T:=T+S.Step; Inc(I);
-  end;
-  P.Line(Map(0,0),Map(1,0),D.Lines[0]);
-  P.Line(Map(0,S.Minimum),Map(0,S.Maximum),D.Lines[1]);
   SetLength(PosSum,D.Columns); SetLength(NegSum,D.Columns);
   UnitSize:=1/D.Columns;
   for R:=0 to D.Rows-1 do
@@ -91,5 +81,16 @@ begin
       P.Text(ElementName(Shared.Names,R),trName,2+R,A,NameAlpha,Style.FillColor)
     else P.Text(ElementName(Shared.Names,R),trName,2+R,A,NameAlpha,Style.LineColor);
   end;
+  // データ線や棒の縁と重なる位置でも基準を読めるよう、軸・目盛線を最後に重ねる。
+  T:=Ceil(S.Minimum/S.Step)*S.Step; I:=0;
+  while (T<=S.Maximum+S.Step*0.00001) and (I<=1000) do
+  begin
+    A:=Map(0,T); Q:=Map(1,T); P.Line(A,Q,D.Lines[2]);
+    if D.Horizontal then P.Text(FormatFloat('0.##',T,TFormatSettings.Invariant),trValue,-1,PointF(A.X,B.Bottom+30))
+    else P.Text(FormatFloat('0.##',T,TFormatSettings.Invariant),trValue,-1,PointF(B.Left-45,A.Y+8));
+    T:=T+S.Step; Inc(I);
+  end;
+  P.Line(Map(0,0),Map(1,0),D.Lines[0]);
+  P.Line(Map(0,S.Minimum),Map(0,S.Maximum),D.Lines[1]);
 end;
 end.

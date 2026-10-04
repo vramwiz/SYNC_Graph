@@ -8,23 +8,33 @@ procedure FinalizeGraphPlugin;
 function GraphPluginTable:PFILTER_PLUGIN_TABLE;
 implementation
 uses System.SysUtils, Winapi.Windows, PluginFilterTable, PluginFilterContextManager,
-  GraphRenderContext, GraphHostParameters, GraphHostSettings, GraphEditorForm;
+  GraphRenderContext, GraphHostParameters, GraphHostSettings, GraphEditorForm, GraphHostLog,
+  GraphFloatState;
 type TContexts=class(TPluginFilterContextList<TGraphRenderContext>);
 var Contexts:TContexts;
 procedure InitializeGraphPlugin;
-begin if Contexts=nil then Contexts:=TContexts.Create; end;
-procedure FinalizeGraphPlugin;
-begin FreeAndNil(Contexts); end;
-function ProcessVideo(Video:PFILTER_PROC_VIDEO):Byte; cdecl;
-var Context:TGraphRenderContext;
 begin
-  Result:=1;
+  // AviUtl2が作ったスレッドはDelphiのBeginThreadを通らない。
+  // UIと映像の同時確保でも、DLL自身のメモリマネージャーにロックを使わせる。
+  IsMultiThread:=True;
+  if Contexts=nil then Contexts:=TContexts.Create;
+end;
+procedure FinalizeGraphPlugin;
+begin InitializeGraphLogger(nil); FreeAndNil(Contexts); end;
+function ProcessVideo(Video:PFILTER_PROC_VIDEO):Byte; cdecl;
+var Context:TGraphRenderContext; Stage:string; PreviousMXCSR:Cardinal;
+begin
+  Result:=1; Stage:='コンテキスト取得';
+  PreviousMXCSR:=BeginGraphFloatScope;
+  try
   try
     if Contexts=nil then Exit;
-    Context:=Contexts.GetContext(Video); if Context<>nil then Context.Process(Video);
+    Context:=Contexts.GetContext(Video); if Context<>nil then Context.Process(Video,Stage);
   except
-    on E:Exception do begin OutputDebugString(PChar('SYNC グラフ: '+E.Message)); Result:=0; end;
+    on E:Exception do begin ReportGraphVideoError(Video,Stage,E); Result:=0; end;
   end;
+  // 例外処理・ログ出力が状態を変えた場合も、ABIを戻る直前に復元する。
+  finally RestoreGraphFloatScope(PreviousMXCSR); end;
 end;
 procedure OpenSettings(Edit:PEDIT_SECTION); cdecl;
 var Obj:OBJECT_HANDLE; Location:TOBJECT_LAYER_FRAME; Context:TGraphRenderContext;

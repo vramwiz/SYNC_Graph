@@ -2,7 +2,7 @@
 {$APPTYPE CONSOLE}
 // フォーム生成とモデル読み込みのスモークテスト。実ホスト操作とは区別する。
 uses System.JSON, System.IOUtils, System.Classes, System.SysUtils, System.Types, Vcl.Forms, GraphEditorForm, GraphModel,
-  GraphSettings, GraphView, GraphPainter, GraphRenderer, GraphAnimation, GraphTextToolbar, ToolbarIconButton,
+  GraphSettings, GraphValues, GraphView, GraphPainter, GraphRenderer, GraphAnimation, GraphTextToolbar, ToolbarIconButton,
   DarkComboBox, ColorPickerHueBar, ColorPickerSVArea, ColorPickerPanel,
   VerticalScrollBarControl, GraphNumberEdit, GraphLayoutPanel, GraphDataPanel,
   GraphStylePanel, GraphColorStylePanel, GraphSettingsPane, GraphTextSnap,
@@ -12,6 +12,10 @@ uses System.JSON, System.IOUtils, System.Classes, System.SysUtils, System.Types,
 // 実ホストと同じエイリアス形式を返し、複数行の初期値で終了できるか確認する。
 type TNumberProbe=class(TGraphNumberEdit)
   function WheelOnDigit(Index,Delta:Integer):Boolean;
+end;
+TGraphViewProbe=class(TGraphView)
+public
+  property MouseCapture;
 end;
 function TNumberProbe.WheelOnDigit(Index,Delta:Integer):Boolean;
 var Location:TPoint;
@@ -101,12 +105,13 @@ begin
 end;
 procedure CheckInvalidClose;
 var Form:TGraphEditorForm; Doc,Accepted:TGraphDocument; Data:TGraphDataPanel;
-  Layout:TGraphLayoutPanel; I:Integer; O:TJSONObject; Path,Text:string;
+  Layout:TGraphLayoutPanel; I:Integer; O:TJSONObject; Path,Text,InitialValues:string;
 begin
   Doc:=TGraphDocument.Create; Form:=TGraphEditorForm.Create(nil); Path:='';
   try
     Doc.Kind:=gkBar; Doc.ResetBounds(640,480);
     Form.Load(nil,640,480,SaveGraph(Doc),DefaultShared);
+    InitialValues:=Form.Shared.Values;
     Data:=FindData(Form); Layout:=FindLayout(Form);
     for I:=0 to Data.ComponentCount-1 do
       if (Data.Components[I] is TEdit) and (TEdit(Data.Components[I]).Left=138) then
@@ -128,7 +133,7 @@ begin
     Accepted:=LoadGraph(Form.Settings);
     try
       if (Accepted.Kind<>gkBar) or (Accepted.Rows<>3) or
-        (Form.Shared.Values<>DefaultShared.Values) then
+        (Form.Shared.Values<>InitialValues) then
         raise Exception.Create('Close did not return the last valid settings');
     finally Accepted.Free; end;
     Writeln('PASS invalid inputs saved to recovery and modal close allowed');
@@ -268,6 +273,122 @@ begin
     Writeln('PASS legend mark drag edits relative offset and preserves parent text');
   finally Form.Free; Doc.Free; end;
 end;
+
+procedure CheckValueTextInteraction;
+var Form:TGraphEditorForm; Doc,Saved:TGraphDocument; View:TGraphView;
+  Shared:TGraphShared; Labels:TArray<TGraphLabel>; Pixels:TBytes;
+  B:TRectF; P,Delta:TPointF; Start,Finish:TPoint; I,H:Integer; BeforeSize:Single;
+  {$IFDEF GRAPH_SNAPSHOT}Shot:TBitmap;{$ENDIF}
+  function ClientPoint(const P:TPointF):TPoint;
+  begin Result:=Point(Round(View.PanX+P.X*View.Zoom),Round(View.PanY+P.Y*View.Zoom)); end;
+  function LabelBounds(ID:Integer):TRectF;
+  var L:TGraphLabel;
+  begin
+    Pixels:=RenderGraph(Doc,Shared,Default(TGraphAnimation),640,480,Labels);
+    for L in Labels do if L.ID=ID then Exit(L.Bounds);
+    raise Exception.Create('Value label is missing');
+  end;
+  procedure Select(ID:Integer);
+  begin
+    B:=LabelBounds(ID); Start:=ClientPoint(B.CenterPoint);
+    View.Perform(WM_LBUTTONDOWN,MK_LBUTTON,MakeLParam(Start.X,Start.Y));
+    View.Perform(WM_LBUTTONUP,0,MakeLParam(Start.X,Start.Y));
+    if (View.SelectedLabelID<>ID) or (View.SelectedRole<>trValue) then
+      raise Exception.Create('Value or tick could not be selected');
+  end;
+  procedure Resize(const P,Delta:TPointF);
+  begin
+    Start:=ClientPoint(P); Finish:=ClientPoint(P+Delta);
+    BeforeSize:=Doc.TextStyles[trValue].Size;
+    View.Perform(WM_LBUTTONDOWN,MK_LBUTTON,MakeLParam(Start.X,Start.Y));
+    View.Perform(WM_MOUSEMOVE,MK_LBUTTON,MakeLParam(Finish.X,Finish.Y));
+    // 仮想ドラッグと実カーソルの移動を混ぜず、タイマーによる再描画だけを処理する。
+    TGraphViewProbe(View).MouseCapture:=False;
+    Sleep(70); Application.ProcessMessages;
+    Saved:=LoadGraph(Form.Settings);
+    if Saved.TextStyles[trValue].Size<=BeforeSize then
+    begin
+      try
+        raise Exception.CreateFmt('Value corner did not resize shared text during drag: handle=%d before=%.3f after=%.3f selected=%d active=%d capture=%s',
+          [H,BeforeSize,Saved.TextStyles[trValue].Size,View.SelectedLabelID,View.ActiveLabelID,BoolToStr(GetCapture=View.Handle,True)]);
+      finally Saved.Free; end;
+    end;
+    if (Saved.LabelScales[2+MaxGraphRows]<>1) or (Saved.Offsets[2+MaxGraphRows].X<>0) or
+      (Saved.Offsets[2+MaxGraphRows].Y<>0) then
+    begin Saved.Free; raise Exception.Create('Shared resize changed individual scale or position'); end;
+    Doc.Free; Doc:=Saved;
+    View.Perform(WM_LBUTTONUP,0,MakeLParam(Finish.X,Finish.Y));
+  end;
+begin
+  Form:=TGraphEditorForm.Create(nil); Doc:=TGraphDocument.Create;
+  try
+    Doc.Kind:=gkBar; Doc.ResizeStructure(1,2); Doc.Bounds:=RectF(80,100,500,350);
+    Doc.Minimum:='0'; Doc.Maximum:='100'; Doc.Interval:='50'; Doc.ValueFormat:='0';
+    Shared:=Default(TGraphShared); Shared.Values:='40,80';
+    Form.Load(nil,640,480,SaveGraph(Doc),Shared); View:=nil;
+    for I:=0 to Form.ComponentCount-1 do
+      if Form.Components[I] is TGraphView then View:=TGraphView(Form.Components[I]);
+    if View=nil then raise Exception.Create('Value editor view is missing');
+    Form.Show; Application.ProcessMessages;
+    Select(2+MaxGraphRows);
+    Start:=ClientPoint(PointF(B.CenterPoint.X,B.Top));
+    View.Perform(WM_MOUSEMOVE,0,MakeLParam(Start.X,Start.Y));
+    if View.Cursor<>crSizeAll then raise Exception.Create('Value edge midpoint still has a resize handle');
+    {$IFDEF GRAPH_SNAPSHOT}
+    Form.Update; View.Update; Shot:=Form.GetFormImage;
+    try Shot.SaveToFile(ExtractFilePath(ParamStr(0))+'value-selection.bmp'); finally Shot.Free; end;
+    {$ENDIF}
+    for H in [0,2,5,7] do
+    begin
+      Select(2+MaxGraphRows);
+      if H in [0,5] then begin P.X:=B.Left; Delta.X:=-B.Width*0.25; end
+      else begin P.X:=B.Right; Delta.X:=B.Width*0.25; end;
+      if H in [0,2] then begin P.Y:=B.Top; Delta.Y:=-B.Height*0.25; end
+      else begin P.Y:=B.Bottom; Delta.Y:=B.Height*0.25; end;
+      Resize(P,Delta);
+    end;
+    Select(GraphTickLabelBase+1); Resize(B.BottomRight,PointF(B.Width*0.2,B.Height*0.2));
+    if not Form.CloseQuery then raise Exception.Create('Shared value size did not pass close validation');
+    Writeln('PASS value four corners, live shared size, tick selection and saved settings');
+    {$IFDEF GRAPH_SNAPSHOT}
+    Form.Update; View.Update; Shot:=Form.GetFormImage;
+    try Shot.SaveToFile(ExtractFilePath(ParamStr(0))+'value-shared-resize.bmp'); finally Shot.Free; end;
+    {$ENDIF}
+    Form.Hide;
+  finally Doc.Free; Form.Free; end;
+end;
+procedure CheckBlankDataInputs(Owner:TComponent);
+var Panel:TGraphDataPanel; Doc:TGraphDocument; S:TGraphShared; Values,Sample:TGraphValues; I:Integer;
+begin
+  Panel:=TGraphDataPanel.Create(Owner); Doc:=TGraphDocument.Create;
+  try
+    Panel.Load(DefaultShared,Doc); S:=Panel.ReadShared;
+    if S.Values<>',,'#13#10',,'#13#10',,' then raise Exception.Create('Blank input became explicit zero');
+    S.Values:='0,,12'#13#10',0,'#13#10',,'; Panel.ClearCache; Panel.Load(S,Doc);
+    S:=Panel.ReadShared; Doc.ResizeStructure(4,4); Panel.Load(S,Doc); S:=Panel.ReadShared;
+    Values:=ParseValues(S.Values,4,4);
+    if (Values[0,0]<>0) or (Values[1,1]<>0) or
+      (Values[0,2]<>12) or (Values[3,3]<=0) then
+      raise Exception.Create('Expanded input did not distinguish missing cells from zero');
+    if SplitRows(S.Values)[3]<>',,,' then raise Exception.Create('Expanded row became explicit zero');
+    Doc.ResizeStructure(2,2); Panel.Load(S,Doc); S:=Panel.ReadShared;
+    Doc.ResizeStructure(4,4); Panel.Load(S,Doc); S:=Panel.ReadShared;
+    Values:=ParseValues(S.Values,4,4);
+    if (Values[0,0]<>0) or (Values[0,2]<>12) or (SplitRows(S.Values)[3]<>',,,') then
+      raise Exception.Create('Input cache did not preserve blanks and explicit values');
+    for I:=0 to Panel.ComponentCount-1 do
+      if (Panel.Components[I] is TEdit) and
+        (TEdit(Panel.Components[I]).Left=MulDiv(138,Panel.CurrentPPI,96)) and
+        (TEdit(Panel.Components[I]).Top=MulDiv(200,Panel.CurrentPPI,96)) then
+        TEdit(Panel.Components[I]).Text:='';
+    S:=Panel.ReadShared; Doc.ResizeStructure(2,2); Panel.Load(S,Doc); S:=Panel.ReadShared;
+    Doc.ResizeStructure(4,4); Panel.Load(S,Doc); S:=Panel.ReadShared;
+    Values:=ParseValues(S.Values,4,4); Sample:=ParseValues('',4,4);
+    for I:=0 to 3 do
+      if Values[0,I]<>Sample[0,I] then raise Exception.Create('Cleared row restored old data');
+    Writeln('PASS blank data, explicit zero and structure expansion persistence');
+  finally Panel.Free; Doc.Free; end;
+end;
 procedure CheckTextSnapping;
 var Doc:TGraphDocument; Labels:TArray<TGraphLabel>; B:TRectF; Scale:Single; Feedback:TTextSnapFeedback;
 begin
@@ -378,6 +499,7 @@ begin
   try
     Application.Initialize;
     CheckLegendInteraction;
+    CheckValueTextInteraction;
     CheckTextSnapping;
     CheckInitialDpi;
     CheckInvalidClose;
@@ -385,7 +507,7 @@ begin
     try
       F.Load(nil,640,480,'',DefaultShared);
       Writeln('PASS editor creation and load');
-      CheckColorStyles(F); CheckLineRows(F); CheckCountInputs(F);
+      CheckColorStyles(F); CheckLineRows(F); CheckCountInputs(F); CheckBlankDataInputs(F);
       Hue:=nil; SV:=nil; CodeEdit:=nil; CodeCount:=0;
       Picker:=FindPicker(F); Scroll:=FindScroll(F);
       for I:=0 to F.ComponentCount-1 do

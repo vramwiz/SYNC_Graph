@@ -15,11 +15,11 @@ type
     function CopyBackground(out Pixels:TBytes; out W,H:Integer; out Status:string):Boolean;
     constructor Create;
     destructor Destroy; override;
-    procedure Process(Video:PFILTER_PROC_VIDEO);
+    procedure Process(Video:PFILTER_PROC_VIDEO; out Stage:string);
   end;
 implementation
 uses GraphHostParameters, GraphSettings, GraphRenderer, GraphPainter,
-  GraphAnimation, GraphComposite;
+  GraphAnimation, GraphComposite, GraphFloatState;
 constructor TGraphRenderContext.Create;
 begin inherited; FLock:=TCriticalSection.Create; end;
 destructor TGraphRenderContext.Destroy;
@@ -33,10 +33,14 @@ begin
     Result:=Length(Pixels)>0; Status:='';
   finally FLock.Release; end;
 end;
-procedure TGraphRenderContext.Process(Video:PFILTER_PROC_VIDEO);
+procedure TGraphRenderContext.Process(Video:PFILTER_PROC_VIDEO; out Stage:string);
 var Doc:TGraphDocument; S:TGraphShared; A:TGraphAnimation; Settings,Key:string;
   W,H:Integer; Buffer,Image:TBytes; Labels:TArray<TGraphLabel>;
+  PreviousMXCSR:Cardinal;
 begin
+  Stage:='パラメーター取得';
+  PreviousMXCSR:=BeginGraphFloatScope;
+  try
   if (Video=nil) or (Video^.Scene=nil) or (Video^.Object_=nil) then Exit;
   Settings:=CurrentSettings; S:=CurrentShared; A:=CurrentAnimation;
   W:=Video^.Object_^.Width; H:=Video^.Object_^.Height;
@@ -46,7 +50,11 @@ begin
   // ホストのGPUコンテキストを直接操作せず、入力RGBAを所有配列へ取得する。
   // ホスト関数はロック外で呼び、ホスト側の待機とロック順序が交差するのを避ける。
   SetLength(Buffer,NativeInt(W)*H*4);
+  // 画像転送内部の端数計算も例外を発生させ得るため、取得・出力まで保護する。
+  // 元の例外マスク・丸め・状態は、全処理が終わるか失敗した時点で復元する。
+  Stage:='入力画像取得';
   Video^.GetImageData(@Buffer[0]);
+  Stage:='描画キャッシュ準備';
   FLock.Acquire;
   try
     FBackground:=Copy(Buffer); FWidth:=W; FHeight:=H;
@@ -59,9 +67,11 @@ begin
       FloatToStr(A.ZoomPercent,TFormatSettings.Invariant);
     if Key<>FKey then
     begin
+      Stage:='設定データ復元';
       Doc:=LoadGraph(Settings);
       try
         if (Doc.Bounds.Width=0) or (Doc.Bounds.Height=0) then Doc.ResetBounds(W,H);
+        Stage:='グラフ描画';
         FImage:=RenderGraph(Doc,S,A,W,H,Labels);
         FKey:=Key;
       finally Doc.Free; end;
@@ -70,7 +80,10 @@ begin
     Image:=FImage;
   finally FLock.Release; end;
   if Length(Image)=0 then Exit;
+  Stage:='画像合成';
   CompositeRgba(Buffer,Image);
+  Stage:='出力画像転送';
   Video^.SetImageData(@Buffer[0],W,H);
+  finally RestoreGraphFloatScope(PreviousMXCSR); end;
 end;
 end.

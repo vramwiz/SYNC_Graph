@@ -3,7 +3,8 @@
 uses
   System.SysUtils,
   AviUtl2FilterTypes in 'Source\Lib\AviUtl2Canvas\Host\AviUtl2FilterTypes.pas',
-  GraphPlugin in 'Source\Host\GraphPlugin.pas';
+  GraphPlugin in 'Source\Host\GraphPlugin.pas',
+  GraphHostLog in 'Source\Host\GraphHostLog.pas';
 
 function InitializePlugin(Version: Cardinal): Byte; cdecl;
 begin
@@ -33,7 +34,13 @@ begin
   end;
 end;
 
+procedure InitializeLogger(Handle:PGraphLogHandle); cdecl;
+begin
+  InitializeGraphLogger(Handle);
+end;
+
 exports
+  InitializeLogger name 'InitializeLogger',
   InitializePlugin name 'InitializePlugin',
   UninitializePlugin name 'UninitializePlugin',
   GetFilterPluginTable name 'GetFilterPluginTable';

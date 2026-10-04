@@ -3,6 +3,9 @@
 // Skiaによる線・塗り・文字装飾と、編集用の文字ヒット領域を共通化する。
 interface
 uses System.Types, System.UITypes, System.Skia, System.Generics.Collections, GraphModel;
+const
+  // データ文字の永続IDと重ならない範囲を、共通サイズだけを編集する目盛文字に使う。
+  GraphTickLabelBase=2+MaxGraphRows+MaxGraphRows*MaxGraphColumns;
 type
   TGraphLabel = record ID:Integer; Role:TTextRole; Bounds,LegendBounds:TRectF; HasLegend:Boolean; end;
   TGraphTextCommand = record
@@ -16,6 +19,7 @@ type
   TGraphPainter = class
   private
     FTexts:TList<TGraphTextCommand>;
+    FTickLabelCount:Integer;
     procedure DrawText(const Value:string; Role:TTextRole; ID:Integer;
       const Position:TPointF; Alpha:Single; LegendColor:TAlphaColor);
   public
@@ -117,6 +121,8 @@ procedure TGraphPainter.Text(const Value:string; Role:TTextRole; ID:Integer;
   const Position:TPointF; Alpha:Single; LegendColor:TAlphaColor);
 var Command:TGraphTextCommand;
 begin
+  if (Role=trValue) and (ID<0) then
+  begin ID:=GraphTickLabelBase+FTickLabelCount; Inc(FTickLabelCount); end;
   if (Value='') or (Alpha<=0) then Exit;
   if ((OnlyLabelID>=0) and (ID<>OnlyLabelID)) or (ID=ExcludeLabelID) and (ExcludeLabelID>=0) then Exit;
   // 文字の座標・透明度を保持し、全グラフ形状の描画後にまとめて重ねる。

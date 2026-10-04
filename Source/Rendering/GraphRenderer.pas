@@ -9,9 +9,9 @@ function RenderGraph(Doc:TGraphDocument; const Shared:TGraphShared;
   ExcludeLabelID:Integer=-1):TBytes;
 implementation
 uses System.Types, System.Skia, GraphValues, GraphCartesian, GraphPolar,
-  GraphAnimationFocus;
+  GraphAnimationFocus, GraphFloatState;
 
-function RenderGraph(Doc:TGraphDocument; const Shared:TGraphShared;
+function RenderGraphPixels(Doc:TGraphDocument; const Shared:TGraphShared;
   const Animation:TGraphAnimation; Width,Height:Integer;
   out Labels:TArray<TGraphLabel>; OnlyLabelID:Integer;
   ExcludeLabelID:Integer):TBytes;
@@ -62,5 +62,21 @@ begin
     P.Free;
     if Zoomed then Surface.Canvas.Restore;
   end;
+end;
+
+function RenderGraph(Doc:TGraphDocument; const Shared:TGraphShared;
+  const Animation:TGraphAnimation; Width,Height:Integer;
+  out Labels:TArray<TGraphLabel>; OnlyLabelID:Integer;
+  ExcludeLabelID:Integer):TBytes;
+var PreviousMXCSR:Cardinal;
+begin
+  // Skiaの初期化は最初のスレッドだけ例外をマスクする。再生スレッドでも
+  // ネイティブ描画中は同じ条件にし、除算等の内部計算で映像出力を中断させない。
+  // 下位関数のSkia参照解放まで終えてから、呼出元のマスク・丸め・状態を戻す。
+  PreviousMXCSR:=BeginGraphFloatScope;
+  try
+    Result:=RenderGraphPixels(Doc,Shared,Animation,Width,Height,Labels,
+      OnlyLabelID,ExcludeLabelID);
+  finally RestoreGraphFloatScope(PreviousMXCSR); end;
 end;
 end.

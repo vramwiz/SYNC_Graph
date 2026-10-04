@@ -73,6 +73,8 @@ begin
     FRowNames[I].StyleElements:=[]; FRowValues[I].StyleElements:=[];
     FRowNames[I].Color:=$00303030; FRowNames[I].Font.Color:=$00EEEEEE;
     FRowValues[I].Color:=$00303030; FRowValues[I].Font.Color:=$00EEEEEE;
+    FRowValues[I].Hint:='空欄は仮データを自動生成します。0はそのまま使用します。';
+    FRowValues[I].ShowHint:=True;
     FRowNames[I].OnChange:=Changed; FRowValues[I].OnChange:=Changed;
     FRowNames[I].OnKeyDown:=RowKeyDown; FRowValues[I].OnKeyDown:=RowKeyDown;
   end;
@@ -143,11 +145,11 @@ begin
       else FRowNames[I].Text:='要素'+IntToStr(I+1);
       VisibleValue:=''; Cells:=nil;
       if I<Length(FValuesCache) then Cells:=FValuesCache[I].Split([',']);
+      // 増えたセルも未入力のまま表示・保存し、仮データを実際の0へ置き換えない。
       for C:=0 to FColumns-1 do
       begin
         if C>0 then VisibleValue:=VisibleValue+',';
-        if C<Length(Cells) then VisibleValue:=VisibleValue+Cells[C]
-        else VisibleValue:=VisibleValue+'0';
+        if C<Length(Cells) then VisibleValue:=VisibleValue+Cells[C];
       end;
       FRowValues[I].Text:=VisibleValue;
     end;
@@ -170,8 +172,12 @@ begin
     FNamesCache[I]:=FRowNames[I].Text;
     OldCells:=FValuesCache[I].Split([',']);
     ValueText:=FRowValues[I].Text; NewCells:=ValueText.Split([',']);
-    if Length(OldCells)<Length(NewCells) then SetLength(OldCells,Length(NewCells));
-    for C:=0 to High(NewCells) do OldCells[C]:=NewCells[C];
+    if Length(OldCells)<Max(FColumns,Length(NewCells)) then
+      SetLength(OldCells,Max(FColumns,Length(NewCells)));
+    // 入力行を消した場合は表示中の全セルを空欄にする。縮小で隠れた列だけは
+    // 保持し、再拡大時に消した値が意図せず復活するのを防ぐ。
+    for C:=0 to Max(FColumns,Length(NewCells))-1 do
+      if C<Length(NewCells) then OldCells[C]:=NewCells[C] else OldCells[C]:='';
     FValuesCache[I]:=string.Join(',',OldCells);
   end;
 end;

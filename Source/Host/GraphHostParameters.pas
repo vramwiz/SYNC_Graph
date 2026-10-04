@@ -40,7 +40,7 @@ begin
   AddSelectList(GraphModeList,'なし',0);
   AddSelectList(GraphModeList,'フェード',1);
   AddSelectList(GraphModeList,'伸長',2);
-  AddSelect(GraphMode,'グラフアニメーション',0,@GraphModeList[0]);
+  AddSelect(GraphMode,'アニメーション',0,@GraphModeList[0]);
   // SDKのトラック上限は登録時に固定。実際の終点は要素数×データ数×100。
   AddTrack(Progress,'進行',0,0,MaxGraphRows*MaxGraphColumns*100,0.01);
   AddTrack(ZoomPercent,'演出 拡大率',100,100,300,1);

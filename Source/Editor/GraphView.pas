@@ -153,7 +153,7 @@ begin
       Round(PanX+B.Right*Zoom)+3,Round(PanY+B.Bottom*Zoom)+3);
   end else
   begin
-    DrawBoundsHandles(Canvas,SelectedBounds,PanX,PanY,Zoom);
+    DrawBoundsHandles(Canvas,SelectedBounds,PanX,PanY,Zoom,(I>=0) and (FLabels[I].Role=trValue));
     if I>=0 then DrawDecorations(SelectedBounds);
   end;
 end;
@@ -218,13 +218,16 @@ begin
   end;
   H:=-3;
   I:=LabelIndex(FSelectedLabelID);
-  if I>=0 then H:=HitBoundsHandle(FLabels[I].Bounds,X,Y,PanX,PanY,Zoom);
+  if I>=0 then H:=HitBoundsHandle(FLabels[I].Bounds,X,Y,PanX,PanY,Zoom,FLabels[I].Role=trValue);
   P:=ScenePoint(X,Y);
   if H=-3 then
   begin
     for I:=High(FLabels) downto 0 do
       if FLabels[I].Bounds.Contains(P) then
-      begin Cursor:=crSizeAll; Exit; end;
+      begin
+        if FLabels[I].ID>=GraphTickLabelBase then Cursor:=crHandPoint else Cursor:=crSizeAll;
+        Exit;
+      end;
     H:=HitBoundsHandle(FDoc.Bounds,X,Y,PanX,PanY,Zoom);
   end;
   case H of
@@ -268,8 +271,14 @@ begin
   if I>=0 then
   begin
     FInitialLabelBounds:=FLabels[I].Bounds;
-    FInitialLabelOffset:=FDoc.Offsets[FActiveLabelID];
-    FInitialLabelScale:=FDoc.LabelScales[FActiveLabelID];
+    FInitialTextStyle:=FDoc.TextStyles[FLabels[I].Role];
+    FInitialLabelOffset:=PointF(0,0); FInitialLabelScale:=1;
+    if FActiveLabelID<Length(FDoc.Offsets) then FInitialLabelOffset:=FDoc.Offsets[FActiveLabelID];
+    if FActiveLabelID<Length(FDoc.LabelScales) then FInitialLabelScale:=FDoc.LabelScales[FActiveLabelID];
+    // 共通サイズの変更は全値を再描画するため、単一文字の移動用キャッシュを使わない。
+    if (FLabels[I].Role=trValue) and
+      ((FTarget>=LabelResizeBase) or (FActiveLabelID>=GraphTickLabelBase)) then
+    begin FPreviewActive:=False; Exit; end;
   end;
   if (FActiveLabelID>=0) and Assigned(FOnBeginLabelEdit) then
     FOnBeginLabelEdit(Self);
@@ -294,7 +303,7 @@ begin
     I:=LabelIndex(FSelectedLabelID);
     if (FTarget=-3) and (I>=0) then
     begin
-      H:=HitBoundsHandle(FLabels[I].Bounds,X,Y,PanX,PanY,Zoom);
+      H:=HitBoundsHandle(FLabels[I].Bounds,X,Y,PanX,PanY,Zoom,FLabels[I].Role=trValue);
       if H>=0 then FTarget:=LabelResizeBase+FSelectedLabelID*8+H;
     end;
     if FTarget=-3 then
@@ -358,10 +367,11 @@ begin
     if FTarget>=LabelResizeBase then
     begin I:=(FTarget-LabelResizeBase) div 8; H:=(FTarget-LabelResizeBase) mod 8; end
     else begin I:=FTarget-LabelMoveBase; H:=-1; end;
-    if (I>=0) and (I<Length(FDoc.Offsets)) then
+    if I>=0 then
     begin
       if H<0 then
       begin
+        if I>=Length(FDoc.Offsets) then Exit;
         D:=P-FDragStart; NewB:=FInitialLabelBounds; NewB.Offset(D.X,D.Y);
         NewB:=SnapTextBounds(NewB,I,FLabels,10,@FSnapFeedback);
         FDoc.Offsets[I]:=FInitialLabelOffset+PointF(
@@ -376,7 +386,10 @@ begin
         begin
           FLabels[H].Bounds:=ResizeGraphText(FDoc,I,FLabels[H].Role,FLabels,
             FInitialLabelBounds,FInitialLabelOffset,P-FDragStart,FInitialLabelScale,
+            FInitialTextStyle.Size,
             (FTarget-LabelResizeBase) mod 8,FSnapFeedback);
+          if (FLabels[H].Role=trValue) and Assigned(FOnDecorationChanged) then
+            FOnDecorationChanged(Self);
         end;
       end;
     end;

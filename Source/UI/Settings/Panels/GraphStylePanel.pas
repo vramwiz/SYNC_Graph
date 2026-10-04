@@ -73,7 +73,8 @@ begin
   end;
 end;
 procedure TGraphStylePanel.Load(Doc:TGraphDocument);
-var I,Y:Integer; ShowRow,ElementStyle:Boolean; Caption:string; L:TLineStyle;
+const RowOrder:array[0..5] of Integer=(4,5,0,1,2,3);
+var Row,I,Y:Integer; ShowRow,ElementStyle:Boolean; Caption:string; L:TLineStyle;
   procedure Bounds(Control:TControl; X,Y,W,H:Integer);
   begin
     Control.SetBounds(MulDiv(X,CurrentPPI,96),MulDiv(Y,CurrentPPI,96),
@@ -86,8 +87,10 @@ begin
   FBusy:=True;
   try
     Y:=38;
-    for I:=0 to 5 do
+    // 要素の色欄から太さ・線種へ短い移動で届くよう、データの縁を先頭に置く。
+    for Row:=Low(RowOrder) to High(RowOrder) do
     begin
+      I:=RowOrder[Row];
       ShowRow:=True; ElementStyle:=((Doc.Kind<>gkNone) and (I=4)) or ((Doc.Kind=gkPie) and (I=5));
       case I of
         0:begin
