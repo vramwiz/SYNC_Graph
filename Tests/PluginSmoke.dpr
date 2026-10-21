@@ -383,6 +383,15 @@ begin
         CheckConcurrentPlayback(Video);
       finally D.Free; end;
     finally Done; end;
+    // 書体キャッシュを使った後の終了・再初期化でも、解放済みSkiaを参照しない。
+    if Init(0)<>1 then raise Exception.Create('Reinitialization failed');
+    try
+      Calls:=0;
+      if (Table^.Func_Proc_Video(@Video)<>1) or (Calls<>1) then
+        raise Exception.Create('Render after reinitialization failed');
+    finally Done; end;
+    Done;
+    Writeln('PASS rendering after reinitialization and repeated shutdown');
   finally FreeLibrary(Lib); end;
 end;
 begin

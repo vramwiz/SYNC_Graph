@@ -9,7 +9,7 @@ function GraphPluginTable:PFILTER_PLUGIN_TABLE;
 implementation
 uses System.SysUtils, Winapi.Windows, PluginFilterTable, PluginFilterContextManager,
   GraphRenderContext, GraphHostParameters, GraphHostSettings, GraphEditorForm, GraphHostLog,
-  GraphFloatState;
+  GraphFloatState, GraphFonts, TextRendererSkiaRuntime, TextRendererSkiaBootstrap;
 type TContexts=class(TPluginFilterContextList<TGraphRenderContext>);
 var Contexts:TContexts;
 procedure InitializeGraphPlugin;
@@ -17,10 +17,27 @@ begin
   // AviUtl2が作ったスレッドはDelphiのBeginThreadを通らない。
   // UIと映像の同時確保でも、DLL自身のメモリマネージャーにロックを使わせる。
   IsMultiThread:=True;
-  if Contexts=nil then Contexts:=TContexts.Create;
+  if Contexts<>nil then Exit;
+  // SkiaはDLLロード中に初期化しない。ホストの公開初期化から同梱DLLを取得する。
+  TTextRendererSkiaRuntime.Acquire(BundledSkiaRuntimeFileName);
+  try
+    Contexts:=TContexts.Create;
+  except
+    TTextRendererSkiaRuntime.Release;
+    raise;
+  end;
 end;
 procedure FinalizeGraphPlugin;
-begin InitializeGraphLogger(nil); FreeAndNil(Contexts); end;
+begin
+  InitializeGraphLogger(nil);
+  try
+    FreeAndNil(Contexts);
+    // 書体はSkiaのDLLを必要とする。DLL参照の解放前にストリームも含めて空にする。
+    ClearGraphFontCache;
+  finally
+    if TTextRendererSkiaRuntime.IsAcquired then TTextRendererSkiaRuntime.Release;
+  end;
+end;
 function ProcessVideo(Video:PFILTER_PROC_VIDEO):Byte; cdecl;
 var Context:TGraphRenderContext; Stage:string; PreviousMXCSR:Cardinal;
 begin

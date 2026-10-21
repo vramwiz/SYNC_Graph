@@ -10,6 +10,7 @@ AviUtl2 のフィルタープラグイン「SYNC → グラフ」を開発する
 - `AviUtl2_グラフプラグイン_検討仕様.md`: 機能仕様と検討事項。
 - `note.md`: 開発・コメント・ライブラリ利用・ビルド・検証の共通ルール。
 - `README.md`: 現在の実装範囲、ビルド・配置方法、実際の確認結果。
+- `SKIA_DLL_INITIALIZATION_FIX.md`: Skia使用プラグイン共通の初期化方針、移植・検証手順、発生環境での解消報告。
 - `Source/Lib` 内の説明Markdown: コピー元、依存、利用方法、制約。
 
 方針と実装済みの機能を区別する。ライブラリの適合性・不足の確認を経て、グラフ専用処理の設計・実装を開始した。現在の実装範囲と未確認項目はREADMEを参照する。
@@ -18,6 +19,8 @@ AviUtl2 のフィルタープラグイン「SYNC → グラフ」を開発する
 
 - Delphi 37 / VCL / Win64のみ。Debug / Release構成を維持する。
 - プロジェクトは `SYNC_Graph_Filter.dpr` / `SYNC_Graph_Filter.dproj`。
+- プラグインは `.dproj` 経由でビルドする。`Scripts/PrepareSkiaUnit.ps1` が生成する
+  遅延初期化版System.Skiaと `SKIA_DEFERRED_INIT` 定義を必ず組み合わせる。
 - フィルターのグループ名は `SYNC`、表示名は `グラフ`。
 - PerMonitorV2 DPIへの対応を維持し、異なるDPIでの確認状況を記録する。
 - 参考元の `Windows Modern Dark` VCLスタイルは現プラグインの採用済み条件とはしない。既存Libの配色・動作条件に合わせて確認する。

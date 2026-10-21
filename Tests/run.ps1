@@ -1,4 +1,5 @@
-﻿param([ValidateSet('Debug','Release')][string]$Config='Debug')
+﻿param([ValidateSet('Debug','Release')][string]$Config='Debug',
+  [string]$PluginPath='C:\ProgramData\aviutl2\Plugin\SYNC_Graph\SYNC_Graph_Filter.auf2')
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot -Parent
 $out=Join-Path $root "Win64\Tests\$Config"
@@ -19,7 +20,12 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $line='call "'+$setup+'" && dcc64 -B -Q -U"'+$units+'" -E"'+$out+'" -N0"'+$out+'" "'+$PSScriptRoot+'\PluginSmoke.dpr"'
 & $env:ComSpec /d /s /c $line
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-$plugin='C:\ProgramData\aviutl2\Plugin\SYNC_Graph\SYNC_Graph_Filter.auf2'
+$plugin=$PluginPath
 if (-not (Test-Path -LiteralPath $plugin)) { throw '先に対象構成のプラグインをビルドしてください。' }
 & (Join-Path $out 'PluginSmoke.exe') $plugin
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+& (Join-Path $PSScriptRoot 'startup_diagnostics.ps1') -Config $Config
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+& (Join-Path $PSScriptRoot 'plugin_startup.ps1') -PluginPath $plugin -Config $Config
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

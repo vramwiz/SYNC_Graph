@@ -41,6 +41,10 @@ AviUtl2用のグラフフィルター。Delphi 37 / VCL / Win64。
 
 通常ビルドで`C:\ProgramData\aviutl2\Plugin\SYNC_Graph`にauf2と`sk4d.dll`を自動配置する。AviUtl2を終了してからビルドする。
 
+プラグインは`.dproj`経由でビルドする。ビルド前に`Scripts/PrepareSkiaUnit.ps1`が
+Delphi 37のSystem.Skiaから遅延初期化版を`Win64/SkiaOverride`へ生成する。
+Delphiのインストール元は変更しない。Skiaのクラス初期化構造が変わった場合は生成を停止する。
+
 ```powershell
 .\Source\Lib\AviUtl2Canvas\Tools\build.ps1 -Config Release -Install
 ```
@@ -258,3 +262,36 @@ AviUtl2が起動中のため、標準配置イベントを一時的に無効に�
 AviUtl2側の選択項目名を「グラフアニメーション」から「アニメーション」へ変更した。選択肢「なし／フェード／伸長」と項目の位置・初期値を維持する。登録名に合わせてPluginSmokeの項目取得と現行仕様の説明を更新した。ユーザー作業を含むApu2/sample.aup2やアニメーション仕様検討の文書は変更していない。
 
 Win64 Debug／Releaseはコンパイラ警告0・エラー0。GraphTests 205項目、EditorSmoke、PluginSmokeが両構成で成功し、新しい登録名から取得した値を使う再生テストを通した。AviUtl2が使用中のため、前節と同じ作業用出力先で新しいDLLを検証し、Win64/Tests/Playback/Releaseのauf2を更新した。前節の黒フレーム対策と今回の名称変更を含む標準配置は終了待ち。実ホストの表示と旧プロジェクトの再読込は未確認。
+
+## 起動時のSkia初期化対策（2026-10-21）
+
+他プラグインへ適用する共通方針と移植手順は [Skia DLL初期化方針](SKIA_DLL_INITIALIZATION_FIX.md) を参照。
+
+Runtime error 216の発生報告を受け、SYNC_Lyrics・SYNC_ScreenLayoutと比較した。
+手元の配布ZIPにはauf2・sk4d.dll・READMEが揃い、Graphの同梱SkiaはScreenLayoutとDelphi 37のものとSHA256が一致した。
+カタログからの再インストールでも配置正常との確認があり、配置漏れを原因とは断定していない。
+
+| 対象 | Skiaの初期化 |
+| --- | --- |
+| 修正前Graph | Delphi標準のクラス初期化により、DLLロード中にSkiaをロード |
+| Lyrics | System.Skiaのクラス初期化を生成処理で遅延させ、公開初期化で同梱DLLを取得 |
+| 比較時のScreenLayout | ランタイム管理と絶対パス指定はあるが、Lyricsの遅延クラス初期化は未採用 |
+| 修正後Graph | Lyrics方式を採用。公開終了で書体参照・ストリーム・Skiaの順に解放 |
+
+Graphは公開InitializePluginから同じフォルダーのsk4d.dllを絶対パスで取得する。
+DLL欠落時は初期化失敗（0）を返す。DLLロード中やユニット終了処理からSkiaをロード・解放しない。
+初期化の重複と終了後の再初期化にも対応する。
+
+起動診断は `%LOCALAPPDATA%\SYNC_Graph\Diagnostics\startup-*.log` へ保存する。
+ホストとプラグインのパス・ベースアドレス、実際に結合したSkiaのパス、初期化の進行・失敗を記録する。
+起動区間のアクセス違反は、例外アドレス・モジュール・相対位置（RVA）・アクセス先を記録して元の例外処理へ渡す。
+first-chance記録はその後に処理される例外も含むため、単独ではクラッシュの証明にならない。
+ログを保存できなくても通常の初期化を続ける。詳細MAPはビルド出力先に生成し、対応するバイナリと組にして調査に使う。
+
+Win64 Debug／Releaseのコンパイルは警告0・エラー0。GraphTests 205項目、EditorSmoke、PluginSmoke、
+初期化中の人工アクセス違反・ログ保存先不可・単独ロード・DLL欠落・重複初期化／終了の検証に成功した。
+人工ホストで旧配布版はロード中にSkiaを読み込み、修正版はInitializePluginまで読み込まないことを確認した。
+カタログから再配置されたファイルを維持するため、今回の検証用ビルドは標準配置を上書きせず
+`Win64/Tests/StartupDiagnostics/Debug` と `Release` に出力した。
+2026-10-21、発生環境の利用者から修正版で起動時エラーが解消したとの報告を受けた。
+開発環境では報告された216自体を再現できておらず、障害箇所・スタックを直接観測した結果ではない。

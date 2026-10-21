@@ -37,16 +37,18 @@
         <Base>true</Base>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base)'!=''">
-        <DCC_UnitSearchPath>Source\Core;Source\Persistence;Source\Rendering;Source\Rendering\Animation;Source\Rendering\Charts;Source\Editor;Source\Editor\Geometry;Source\Editor\Interaction;Source\Editor\Preview;Source\Shell;Source\Host;Source\UI\Settings;Source\UI\Settings\Controls;Source\UI\Settings\Panels;Source\UI\Text;Source\Lib\UI\DarkEditor;Source\Lib\UI\DarkComboBox;Source\Lib\UI\ToolbarIcon;Source\Lib\UI\ColorPicker;Source\Lib\UI\DarkMenu;Source\Lib\UI\ShortcutAction;Source\Lib\UI\HorizontalTrackBar;Source\Lib\UI\VerticalScrollBar;Source\Lib\AviUtl2Canvas\Host;Source\Lib\AviUtl2Canvas\UI;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
+        <DCC_UnitSearchPath>Win64\SkiaOverride;Source\Lib\TextRenderer;Source\Core;Source\Persistence;Source\Rendering;Source\Rendering\Animation;Source\Rendering\Charts;Source\Editor;Source\Editor\Geometry;Source\Editor\Interaction;Source\Editor\Preview;Source\Shell;Source\Host;Source\UI\Settings;Source\UI\Settings\Controls;Source\UI\Settings\Panels;Source\UI\Text;Source\Lib\UI\DarkEditor;Source\Lib\UI\DarkComboBox;Source\Lib\UI\ToolbarIcon;Source\Lib\UI\ColorPicker;Source\Lib\UI\DarkMenu;Source\Lib\UI\ShortcutAction;Source\Lib\UI\HorizontalTrackBar;Source\Lib\UI\VerticalScrollBar;Source\Lib\AviUtl2Canvas\Host;Source\Lib\AviUtl2Canvas\UI;$(DCC_UnitSearchPath)</DCC_UnitSearchPath>
         <DCC_DcuOutput>$(MSBuildProjectDirectory)\$(Platform)\$(ProjectName)\$(Config)\DCU</DCC_DcuOutput>
         <GenDll>true</GenDll>
+        <DCC_Define>SKIA_DEFERRED_INIT;$(DCC_Define)</DCC_Define>
+        <DCC_MapFile>3</DCC_MapFile>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;Winapi;Vcl;$(DCC_Namespace)</DCC_Namespace>
         <SanitizedProjectName>SYNC_Graph_Filter</SanitizedProjectName>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_1_Win64)'!=''">
         <Debugger_HostApplication>D:\aviutl2_v2.1.6a\aviutl2.exe</Debugger_HostApplication>
         <Debugger_WorkingDirectory>D:\aviutl2_v2.1.6a</Debugger_WorkingDirectory>
-        <PreBuildEvent><![CDATA[if not exist "C:\ProgramData\aviutl2\Plugin\SYNC_Graph" mkdir "C:\ProgramData\aviutl2\Plugin\SYNC_Graph"]]></PreBuildEvent>
+        <PreBuildEvent><![CDATA[powershell -NoProfile -ExecutionPolicy Bypass -File "$(MSBuildProjectDirectory)\Scripts\PrepareSkiaUnit.ps1" -BdsRoot "$(BDS)" -ProjectRoot "$(MSBuildProjectDirectory)"&&if not exist "C:\ProgramData\aviutl2\Plugin\SYNC_Graph" mkdir "C:\ProgramData\aviutl2\Plugin\SYNC_Graph"]]></PreBuildEvent>
         <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
         <PostBuildEvent><![CDATA[copy /Y "$(MSBuildProjectDirectory)\$(PROJECTNAME).dll" "C:\ProgramData\aviutl2\Plugin\SYNC_Graph\$(PROJECTNAME).auf2"&&copy /Y "$(MSBuildProjectDirectory)\Lib\Skia\Win64\sk4d.dll" "C:\ProgramData\aviutl2\Plugin\SYNC_Graph\sk4d.dll"&&del /Q "$(MSBuildProjectDirectory)\$(PROJECTNAME).dll"]]></PostBuildEvent>
         <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
@@ -55,7 +57,7 @@
     <PropertyGroup Condition="'$(Cfg_2_Win64)'!=''">
         <Debugger_HostApplication>D:\aviutl2_v2.1.6a\aviutl2.exe</Debugger_HostApplication>
         <Debugger_WorkingDirectory>D:\aviutl2_v2.1.6a</Debugger_WorkingDirectory>
-        <PreBuildEvent><![CDATA[if not exist "C:\ProgramData\aviutl2\Plugin\SYNC_Graph" mkdir "C:\ProgramData\aviutl2\Plugin\SYNC_Graph"]]></PreBuildEvent>
+        <PreBuildEvent><![CDATA[powershell -NoProfile -ExecutionPolicy Bypass -File "$(MSBuildProjectDirectory)\Scripts\PrepareSkiaUnit.ps1" -BdsRoot "$(BDS)" -ProjectRoot "$(MSBuildProjectDirectory)"&&if not exist "C:\ProgramData\aviutl2\Plugin\SYNC_Graph" mkdir "C:\ProgramData\aviutl2\Plugin\SYNC_Graph"]]></PreBuildEvent>
         <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
         <PostBuildEvent><![CDATA[copy /Y "$(MSBuildProjectDirectory)\$(PROJECTNAME).dll" "C:\ProgramData\aviutl2\Plugin\SYNC_Graph\$(PROJECTNAME).auf2"&&copy /Y "$(MSBuildProjectDirectory)\Lib\Skia\Win64\sk4d.dll" "C:\ProgramData\aviutl2\Plugin\SYNC_Graph\sk4d.dll"&&del /Q "$(MSBuildProjectDirectory)\$(PROJECTNAME).dll"]]></PostBuildEvent>
         <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
@@ -99,7 +101,7 @@
     <Import Project="$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj" Condition="Exists('$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj')"/>
     <Import Project="$(MSBuildProjectName).deployproj" Condition="Exists('$(MSBuildProjectName).deployproj')"/>
     <PropertyGroup Condition="'$(Config)'=='Debug' And '$(Platform)'=='Win64'">
-        <PreBuildEvent>if not exist &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Graph&quot; mkdir &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Graph&quot;</PreBuildEvent>
+        <PreBuildEvent>powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\Scripts\PrepareSkiaUnit.ps1&quot; -BdsRoot &quot;$(BDS)&quot; -ProjectRoot &quot;$(MSBuildProjectDirectory)&quot;&amp;&amp;if not exist &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Graph&quot; mkdir &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Graph&quot;</PreBuildEvent>
         <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
         <PreLinkEvent/>
         <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
@@ -108,7 +110,7 @@
         <PostBuildEventExecuteWhen>Always</PostBuildEventExecuteWhen>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Release' And '$(Platform)'=='Win64'">
-        <PreBuildEvent>if not exist &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Graph&quot; mkdir &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Graph&quot;</PreBuildEvent>
+        <PreBuildEvent>powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\Scripts\PrepareSkiaUnit.ps1&quot; -BdsRoot &quot;$(BDS)&quot; -ProjectRoot &quot;$(MSBuildProjectDirectory)&quot;&amp;&amp;if not exist &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Graph&quot; mkdir &quot;C:\ProgramData\aviutl2\Plugin\SYNC_Graph&quot;</PreBuildEvent>
         <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
         <PreLinkEvent/>
         <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>

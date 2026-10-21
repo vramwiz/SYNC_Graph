@@ -10,12 +10,21 @@ type
     Width:Single;
   end;
 function ResolveGraphTypeface(const Name:string; const Style:TSkFontStyle):ISkTypeface;
+procedure ClearGraphFontCache;
 function HasGraphGlyphs(const Face:ISkTypeface; const Text:string):Boolean;
 function GraphFontRuns(const Name,Text:string; const Style:TSkFontStyle; Size:Single):TArray<TGraphFontRun>;
 implementation
 uses System.SysUtils, System.Classes, System.Generics.Collections, Winapi.Windows;
 // 編集UIと映像描画の両スレッドから利用する。参照の取得・登録は同じロックで保護する。
 var Faces:TDictionary<string,ISkTypeface>; FontStreams:TObjectList<TMemoryStream>; Lock:TObject;
+procedure ClearGraphFontCache;
+begin
+  TMonitor.Enter(Lock);
+  try
+    Faces.Clear;
+    FontStreams.Clear;
+  finally TMonitor.Exit(Lock); end;
+end;
 function WindowsTypeface(const Name:string; const Style:TSkFontStyle):ISkTypeface;
 var DC:HDC; Font:HFONT; Old:HGDIOBJ; LF:TLogFont; Bytes:DWORD; Stream:TMemoryStream;
 begin

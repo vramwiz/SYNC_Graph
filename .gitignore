@@ -3,6 +3,8 @@ __history/
 *.dproj.local
 *.identcache
 *.dsk
+*.map
+*.drc
 
 Setup/*.zip
 Setup/SYNC_Graph/

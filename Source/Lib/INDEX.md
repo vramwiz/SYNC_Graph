@@ -16,5 +16,8 @@
 各部品のREADMEはコピー元の仕様と当時の確認結果を含む。本プロジェクトでの結果はルートREADMEを参照する。
 旧SyncCanvasEditorとSyncCanvasPluginはコピー元の使用例として残しており、現在のDPRからは参照しない。
 
+Skiaの起動・終了管理は [TextRendererのランタイム管理](TextRenderer/README.md) をLyricsから採用。
+描画本体は従来のGraph専用実装を維持する。
+
 ## DarkEditor 1.0.0
 [説明](UI/DarkEditor/README.md)。今回のUI改良をDelphiVclAppTemplateのLibへ登録し、同一内容を採用。フォームの暗色化と日本語表の寸法を担当する。
